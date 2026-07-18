@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Header from "@/components/Header";
 
 type InputMethod = "url" | "html" | "zip";
 
@@ -10,25 +11,14 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900">
       <div className="mx-auto max-w-5xl">
-        <header className="mb-8 text-center">
-          <p className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-blue-700">
-            AI-assisted assessment
-          </p>
-
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-            Copyright Compliance Checker
-          </h1>
-
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">
-            Analyse webpages, HTML source code, or ZIP website submissions
-            using rule-based checks, AI reasoning, and a transparent comparison
-            of both results.
-          </p>
-        </header>
+        <Header />
 
         <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold">Choose an analysis method</h2>
+            <h2 className="text-xl font-semibold">
+              Choose an analysis method
+            </h2>
+
             <p className="mt-1 text-sm text-slate-600">
               Select the type of content you want to assess.
             </p>
@@ -45,6 +35,7 @@ export default function Home() {
               }`}
             >
               <span className="block font-semibold">Analyse URL</span>
+
               <span className="mt-1 block text-sm text-slate-600">
                 Check a live webpage.
               </span>
@@ -59,7 +50,10 @@ export default function Home() {
                   : "border-slate-300 bg-white hover:border-blue-400"
               }`}
             >
-              <span className="block font-semibold">Paste HTML</span>
+              <span className="block font-semibold">
+                Paste HTML
+              </span>
+
               <span className="mt-1 block text-sm text-slate-600">
                 Analyse a source-code snippet.
               </span>
@@ -74,7 +68,10 @@ export default function Home() {
                   : "border-slate-300 bg-white hover:border-blue-400"
               }`}
             >
-              <span className="block font-semibold">Upload ZIP</span>
+              <span className="block font-semibold">
+                Upload ZIP
+              </span>
+
               <span className="mt-1 block text-sm text-slate-600">
                 Assess a complete website submission.
               </span>
@@ -106,7 +103,7 @@ export default function Home() {
                   htmlFor="html"
                   className="mb-2 block text-sm font-medium text-slate-800"
                 >
-                  HTML source
+                  HTML Source
                 </label>
 
                 <textarea
@@ -124,7 +121,7 @@ export default function Home() {
                   htmlFor="zip"
                   className="mb-2 block text-sm font-medium text-slate-800"
                 >
-                  ZIP submission
+                  ZIP Submission
                 </label>
 
                 <input
@@ -146,7 +143,7 @@ export default function Home() {
                 htmlFor="intended-use"
                 className="mb-2 block text-sm font-medium text-slate-800"
               >
-                Intended use
+                Intended Use
               </label>
 
               <input
@@ -161,7 +158,7 @@ export default function Home() {
               type="button"
               className="mt-6 w-full rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white transition hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200"
             >
-              Analyse content
+              Analyse Content
             </button>
           </div>
         </section>
@@ -171,22 +168,32 @@ export default function Home() {
             <h3 className="font-semibold text-slate-900">
               Rule-Based Assessment
             </h3>
+
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Applies deterministic copyright, attribution, and licence checks.
+              Applies deterministic copyright, attribution and licence
+              compliance checks.
             </p>
           </article>
 
           <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <h3 className="font-semibold text-slate-900">AI Assessment</h3>
+            <h3 className="font-semibold text-slate-900">
+              AI Assessment
+            </h3>
+
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Interprets attribution evidence and explains its reasoning.
+              Uses a local large language model to interpret attribution
+              evidence and explain its reasoning.
             </p>
           </article>
 
           <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <h3 className="font-semibold text-slate-900">Comparison</h3>
+            <h3 className="font-semibold text-slate-900">
+              Comparison
+            </h3>
+
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Highlights agreement, disagreement, and cases requiring review.
+              Compares the rule-based and AI assessments and highlights
+              agreements, disagreements and cases requiring manual review.
             </p>
           </article>
         </section>
