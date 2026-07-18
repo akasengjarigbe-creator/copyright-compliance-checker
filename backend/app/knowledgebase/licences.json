@@ -1,0 +1,50 @@
+{
+  "CC BY 4.0": {
+    "requires_attribution": true,
+    "commercial_use": true,
+    "modification": true,
+    "requires_share_alike": false,
+    "requires_non_commercial": false,
+    "requires_no_derivatives": false
+  },
+  "CC BY-SA 4.0": {
+    "requires_attribution": true,
+    "commercial_use": true,
+    "modification": true,
+    "requires_share_alike": true,
+    "requires_non_commercial": false,
+    "requires_no_derivatives": false
+  },
+  "CC BY-NC 4.0": {
+    "requires_attribution": true,
+    "commercial_use": false,
+    "modification": true,
+    "requires_share_alike": false,
+    "requires_non_commercial": true,
+    "requires_no_derivatives": false
+  },
+  "CC BY-ND 4.0": {
+    "requires_attribution": true,
+    "commercial_use": true,
+    "modification": false,
+    "requires_share_alike": false,
+    "requires_non_commercial": false,
+    "requires_no_derivatives": true
+  },
+  "CC BY-NC-SA 4.0": {
+    "requires_attribution": true,
+    "commercial_use": false,
+    "modification": true,
+    "requires_share_alike": true,
+    "requires_non_commercial": true,
+    "requires_no_derivatives": false
+  },
+  "CC BY-NC-ND 4.0": {
+    "requires_attribution": true,
+    "commercial_use": false,
+    "modification": false,
+    "requires_share_alike": false,
+    "requires_non_commercial": true,
+    "requires_no_derivatives": true
+  }
+}
