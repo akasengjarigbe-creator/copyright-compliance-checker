@@ -1,14 +1,40 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.routes import router
 
+
 app = FastAPI(
-    title="Copyright Attribution and Licence Compliance Checker",
-    version="0.1.0",
-    description="Rule-based MVP for analysing image attribution and licence compliance in student webpages."
+    title="Copyright Compliance Checker API",
+    version="1.0.0",
 )
 
-app.include_router(router, prefix="/api")
+
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+app.include_router(
+    router,
+    prefix="/api",
+)
+
 
 @app.get("/")
-def health_check():
-    return {"status": "ok", "message": "Copyright Compliance Checker API is running"}
+def root():
+    return {
+        "message": (
+            "Copyright Compliance Checker API is running."
+        )
+    }

@@ -73,25 +73,68 @@ Detected licence URL:
 Declared intended use:
 {intended_use}
 
+IMPORTANT INTERPRETATION RULES
+
+For "Attribution completeness":
+
+- assess whether the creator or copyright owner is identified;
+- assess whether the applicable licence is identified;
+- assess whether the available attribution contains the required
+  creator and licence evidence;
+- do not fail this criterion merely because HTML alt text is missing;
+- do not fail this criterion merely because an HTML title attribute
+  is missing;
+- alt text is primarily an accessibility field and is not, by itself,
+  copyright attribution evidence;
+- an HTML title attribute is not required for attribution completeness;
+- only use alt text or title when those fields contain explicit creator,
+  source, or licence information.
+
 ASSESSMENT CRITERIA
 
 Assess all six criteria:
 
 1. Copyright owner identified
+
+Pass when the creator, photographer, author, copyright owner,
+or equivalent rights holder is explicitly identified.
+
 2. Licence identified
+
+Pass when a recognised licence or clear permission statement
+is explicitly identified.
+
 3. Licence URL provided
+
+Pass when a direct licence or source URL is supplied.
+
 4. Attribution completeness
+
+Pass when the supplied attribution evidence identifies the creator
+or copyright owner and the applicable licence. Do not require HTML
+alt text or an HTML title unless those fields contain relevant
+attribution evidence.
+
 5. Licence conditions understood
+
+Pass when the supplied text demonstrates an understanding of the
+licence conditions or permitted use.
+
 6. Usage limits checked
+
+Pass when the declared intended use does not conflict with the
+detected licence restrictions.
 
 For every criterion, return:
 
-- the exact criterion name shown below, without adding numbers, prefixes, punctuation, or alternative wording;
+- the criterion name exactly as written below;
+- do not add numbers, bullets, prefixes, suffixes, punctuation,
+  or alternative wording;
 - use the criterion text verbatim;
-- passed as true or false;
+- return passed as true or false;
 - provide a clear rationale based only on the supplied evidence.
 
-The criterion field values must be exactly:
+The only permitted criterion names are exactly:
 
 Copyright owner identified
 Licence identified
@@ -99,7 +142,9 @@ Licence URL provided
 Attribution completeness
 Licence conditions understood
 Usage limits checked
-If a criterion cannot be assessed, still return exact criterion name above and set passed to false with an appropriate rational.
+
+If a criterion cannot be assessed, still return the exact criterion
+name above, set passed to false, and provide an appropriate rationale.
 
 OVERALL CLASSIFICATION
 
@@ -112,8 +157,8 @@ Classify the image as exactly one of:
 Use these general principles:
 
 Fully Compliant:
-The available evidence clearly satisfies all important
-requirements and no licence-use conflict is detected.
+The available evidence clearly satisfies all important requirements
+and no licence-use conflict is detected.
 
 Partially Compliant:
 Some requirements are satisfied, but evidence is incomplete,
@@ -209,7 +254,9 @@ def assess_image_with_llm(
     try:
         response_data = response.json()
         generated_text = response_data["response"]
-        generated_json = json.loads(generated_text)
+        generated_json = json.loads(
+            generated_text
+        )
 
     except (
         ValueError,
