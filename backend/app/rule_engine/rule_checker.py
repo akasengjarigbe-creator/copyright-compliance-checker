@@ -1,4 +1,8 @@
-from app.knowledgebase.licence_loader import get_licence_rules
+import re
+
+from app.knowledgebase.licence_loader import (
+    get_licence_rules,
+)
 from app.models.schemas import (
     AttributionEvidence,
     CriterionResult,
@@ -6,18 +10,19 @@ from app.models.schemas import (
 )
 
 
+SELF_AUTHORED_LICENCE = "Self-authored claim"
+
+
 def _criterion(
     name: str,
     passed: bool,
     weight: int,
-    rationale: str
+    rationale: str,
 ) -> CriterionResult:
     """
     Create a result for one compliance criterion.
-
-    A criterion receives its full weight when it passes
-    and zero points when it fails.
     """
+
     return CriterionResult(
         criterion=name,
         passed=passed,
@@ -27,45 +32,83 @@ def _criterion(
     )
 
 
+def _normalise_text(
+    text: str,
+) -> str:
+    return re.sub(
+        r"\s+",
+        " ",
+        text.casefold(),
+    ).strip()
+
+
+def _conditions_are_explained(
+    nearby_text: str,
+    licence_name: str | None,
+) -> bool:
+    """
+    Detect a genuine explanation of permission or conditions.
+
+    A generic occurrence of the word 'use' is not sufficient.
+    """
+
+    if licence_name == SELF_AUTHORED_LICENCE:
+        return True
+
+    text = _normalise_text(
+        nearby_text
+    )
+
+    permission_phrases = [
+        "permits",
+        "permit",
+        "is permitted",
+        "is allowed",
+        "may be used",
+        "can be used",
+        "reuse is allowed",
+        "free to use",
+        "with attribution",
+        "under the terms",
+        "subject to the licence",
+    ]
+
+    return any(
+        phrase in text
+        for phrase in permission_phrases
+    )
+
+
 def _check_usage_compatibility(
     licence_name: str | None,
-    intended_use: str
+    intended_use: str,
 ) -> tuple[bool, bool, str]:
     """
-    Compare the intended image use with the detected licence rules.
-
-    Returns:
-        usage_passed:
-            True when the intended use is compatible.
-
-        confirmed_conflict:
-            True only when a supported licence directly conflicts
-            with the intended use.
-
-        rationale:
-            A human-readable explanation of the result.
+    Compare intended use with detected licence rules.
     """
 
     if not licence_name:
         return (
             False,
             False,
-            "Cannot check usage limits because no licence was identified."
+            "Cannot check usage limits because no licence was identified.",
         )
 
-    rules = get_licence_rules(licence_name)
+    rules = get_licence_rules(
+        licence_name
+    )
 
     if rules is None:
         return (
             False,
             False,
             (
-                f"The licence '{licence_name}' is not currently supported "
-                "by the licence knowledge base."
-            )
+                f"The licence '{licence_name}' is not currently "
+                "supported by the licence knowledge base."
+            ),
         )
 
-    use = intended_use.lower()
+    use = intended_use.casefold()
 
     is_non_commercial = (
         "non-commercial" in use
@@ -116,28 +159,43 @@ def _check_usage_compatibility(
         ]
     )
 
-    if is_commercial and not rules["commercial_use"]:
-        return (
+    if (
+        is_commercial
+        and not rules.get(
+            "commercial_use",
             False,
-            True,
-            (
-                f"The detected {licence_name} licence does not permit "
-                "the declared commercial use."
-            )
         )
-
-    if is_modified and not rules["modification"]:
+    ):
         return (
             False,
             True,
             (
-                f"The detected {licence_name} licence does not permit "
-                "modified or adapted versions to be shared."
-            )
+                f"The detected {licence_name} licence does not "
+                "permit the declared commercial use."
+            ),
         )
 
     if (
-        rules["requires_share_alike"]
+        is_modified
+        and not rules.get(
+            "modification",
+            False,
+        )
+    ):
+        return (
+            False,
+            True,
+            (
+                f"The detected {licence_name} licence does not "
+                "permit modified or adapted versions to be shared."
+            ),
+        )
+
+    if (
+        rules.get(
+            "requires_share_alike",
+            False,
+        )
         and is_modified
         and is_shared
         and share_alike_missing
@@ -146,10 +204,21 @@ def _check_usage_compatibility(
             False,
             True,
             (
-                f"The detected {licence_name} licence requires the modified "
-                "work to be shared under the same or a compatible "
-                "ShareAlike licence."
-            )
+                f"The detected {licence_name} licence requires "
+                "the modified work to be shared under the same "
+                "or a compatible ShareAlike licence."
+            ),
+        )
+
+    if licence_name == SELF_AUTHORED_LICENCE:
+        return (
+            True,
+            False,
+            (
+                "The page contains a self-authorship claim. "
+                "The declared use does not conflict with that claim, "
+                "although ownership may require independent verification."
+            ),
         )
 
     return (
@@ -158,15 +227,15 @@ def _check_usage_compatibility(
         (
             "The declared use does not conflict with the detected "
             "licence restrictions."
-        )
+        ),
     )
 
 
 def _build_recommendations(
-    criteria: list[CriterionResult]
+    criteria: list[CriterionResult],
 ) -> list[str]:
     """
-    Convert failed criteria into specific corrective recommendations.
+    Convert failed criteria into corrective recommendations.
     """
 
     recommendation_map = {
@@ -187,8 +256,8 @@ def _build_recommendations(
             "and the applicable licence."
         ),
         "Licence conditions understood": (
-            "Explain why the licence permits the intended use of "
-            "the image."
+            "Explain why the licence permits the intended use "
+            "of the image."
         ),
     }
 
@@ -199,112 +268,162 @@ def _build_recommendations(
             continue
 
         if criterion.criterion == "Usage limits checked":
-            recommendations.append(criterion.rationale)
+            recommendations.append(
+                criterion.rationale
+            )
             continue
 
-        recommendation = recommendation_map.get(
-            criterion.criterion,
-            f"Review and correct: {criterion.criterion}."
+        recommendations.append(
+            recommendation_map.get(
+                criterion.criterion,
+                (
+                    "Review and correct: "
+                    f"{criterion.criterion}."
+                ),
+            )
         )
-
-        recommendations.append(recommendation)
 
     return recommendations
 
 
 def assess_images(
     evidence_items: list[AttributionEvidence],
-    intended_use: str = "educational coursework"
+    intended_use: str = "educational coursework",
 ) -> list[ImageAssessment]:
     """
-    Assess every image against the six compliance criteria.
+    Assess every image against six compliance criteria.
     """
 
     assessments: list[ImageAssessment] = []
 
     for evidence in evidence_items:
+        is_self_authored = (
+            evidence.licence_name
+            == SELF_AUTHORED_LICENCE
+        )
+
         (
             usage_passed,
             confirmed_usage_conflict,
             usage_rationale,
         ) = _check_usage_compatibility(
             evidence.licence_name,
-            intended_use
+            intended_use,
         )
 
-        nearby_text_lower = evidence.nearby_text.lower()
-
         conditions_understood = (
-            "permit" in nearby_text_lower
-            or "allowed" in nearby_text_lower
-            or "use" in nearby_text_lower
+            _conditions_are_explained(
+                evidence.nearby_text,
+                evidence.licence_name,
+            )
+        )
+
+        creator_identified = bool(
+            evidence.possible_author
+        )
+
+        permission_basis_identified = bool(
+            evidence.licence_name
+        )
+
+        licence_url_satisfied = bool(
+            evidence.licence_url
+        ) or is_self_authored
+
+        attribution_complete = (
+            creator_identified
+            and permission_basis_identified
         )
 
         criteria = [
             _criterion(
                 "Copyright owner identified",
-                bool(evidence.possible_author),
+                creator_identified,
                 20,
                 (
                     "Author or creator detected."
-                    if evidence.possible_author
-                    else "No clear author or rights holder was detected."
-                )
+                    if creator_identified
+                    else (
+                        "No clear author or rights holder "
+                        "was detected."
+                    )
+                ),
             ),
             _criterion(
                 "Licence identified",
-                bool(evidence.licence_name),
+                permission_basis_identified,
                 20,
                 (
-                    "Licence information detected."
-                    if evidence.licence_name
-                    else "No licence name or permission statement was detected."
-                )
+                    (
+                        "A self-authorship claim was detected. "
+                        "A third-party licence is not required "
+                        "when the claim is genuine."
+                    )
+                    if is_self_authored
+                    else (
+                        "Licence information detected."
+                        if permission_basis_identified
+                        else (
+                            "No licence name or permission "
+                            "statement was detected."
+                        )
+                    )
+                ),
             ),
             _criterion(
                 "Licence URL provided",
-                bool(evidence.licence_url),
+                licence_url_satisfied,
                 15,
                 (
-                    "Licence or source URL detected."
-                    if evidence.licence_url
-                    else "No licence URL was detected."
-                )
+                    (
+                        "A licence URL is not applicable to the "
+                        "declared self-authored image."
+                    )
+                    if is_self_authored
+                    else (
+                        "Licence URL detected."
+                        if evidence.licence_url
+                        else "No licence URL was detected."
+                    )
+                ),
             ),
             _criterion(
                 "Attribution completeness",
-                bool(
-                    evidence.possible_author
-                    and evidence.licence_name
-                ),
+                attribution_complete,
                 15,
                 (
-                    "Attribution includes both creator and licence evidence."
-                    if (
-                        evidence.possible_author
-                        and evidence.licence_name
-                    )
+                    "Attribution includes both creator and "
+                    "licence or permission evidence."
+                    if attribution_complete
                     else "The attribution is incomplete."
-                )
+                ),
             ),
             _criterion(
                 "Licence conditions understood",
                 conditions_understood,
                 15,
                 (
-                    "An explanation of permitted use was detected."
-                    if conditions_understood
-                    else (
-                        "No clear explanation of why the licence permits "
-                        "the intended use was detected."
+                    (
+                        "The image is declared as self-authored, "
+                        "so third-party licence conditions are "
+                        "not applicable."
                     )
-                )
+                    if is_self_authored
+                    else (
+                        "An explanation of permitted use was detected."
+                        if conditions_understood
+                        else (
+                            "No clear explanation of why the licence "
+                            "permits the intended use was detected."
+                        )
+                    )
+                ),
             ),
             _criterion(
                 "Usage limits checked",
                 usage_passed,
                 15,
-                usage_rationale
+                usage_rationale,
             ),
         ]
 
@@ -313,14 +432,15 @@ def assess_images(
             for criterion in criteria
         )
 
-        if total >= 80 and not confirmed_usage_conflict:
+        if (
+            total >= 80
+            and not confirmed_usage_conflict
+        ):
             label = "Fully Compliant"
         elif total >= 50:
             label = "Partially Compliant"
         else:
             label = "Non-Compliant"
-
-        recommendations = _build_recommendations(criteria)
 
         assessments.append(
             ImageAssessment(
@@ -328,7 +448,11 @@ def assess_images(
                 total_score=total,
                 label=label,
                 criteria=criteria,
-                recommendations=recommendations,
+                recommendations=(
+                    _build_recommendations(
+                        criteria
+                    )
+                ),
             )
         )
 

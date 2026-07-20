@@ -40,6 +40,9 @@ Evaluate only the evidence supplied below.
 Do not invent facts or claim that unavailable information has
 been verified.
 
+Do not infer a creator, licence, or permission merely from the
+image host, image URL, domain name, filename, or intended use.
+
 If the evidence is incomplete, ambiguous, contradictory, or
 insufficient, clearly state this and require manual review where
 appropriate.
@@ -75,20 +78,84 @@ Declared intended use:
 
 IMPORTANT INTERPRETATION RULES
 
+EXTERNAL KNOWLEDGE
+
+Do not use general knowledge to fill in missing copyright or
+licence information.
+
+For example:
+
+- an image hosted on images.unsplash.com does not mean that the
+  webpage has identified the photographer;
+
+- an image hosted on images.unsplash.com does not mean that the
+  webpage has identified the Unsplash License;
+
+- an image hosted on images.pexels.com does not mean that the
+  webpage has identified the photographer or Pexels License;
+
+- a source-domain reference such as "from unsplash.com" is not
+  the same as identifying the creator or applicable licence.
+
+Evaluate only the evidence explicitly supplied by the webpage.
+
+ATTRIBUTION COMPLETENESS
+
 For "Attribution completeness":
 
-- assess whether the creator or copyright owner is identified;
-- assess whether the applicable licence is identified;
-- assess whether the available attribution contains the required
-  creator and licence evidence;
-- do not fail this criterion merely because HTML alt text is missing;
-- do not fail this criterion merely because an HTML title attribute
-  is missing;
-- alt text is primarily an accessibility field and is not, by itself,
-  copyright attribution evidence;
-- an HTML title attribute is not required for attribution completeness;
-- only use alt text or title when those fields contain explicit creator,
-  source, or licence information.
+- the creator or copyright owner must be identified;
+- the applicable licence or permission basis must be identified;
+- both requirements must pass before attribution completeness
+  can pass;
+- a source website alone is not sufficient;
+- intended use alone is not sufficient;
+- missing alt text or HTML title must not, by itself, cause this
+  criterion to fail;
+- alt text and title only count when they contain explicit creator,
+  source, licence, or permission information.
+
+USAGE LIMITS
+
+For "Usage limits checked":
+
+- an applicable licence or permission basis must first be identified;
+- if no applicable licence is identified, this criterion must fail;
+- do not assume that educational use is permitted merely because the
+  use is non-commercial or academic;
+- do not rely on the image host or domain name as proof of permission.
+
+LICENCE CONDITIONS
+
+For "Licence conditions understood":
+
+- an applicable licence must first be identified;
+- if no applicable licence is identified, this criterion must fail;
+- merely naming a website or source is not enough;
+- merely naming a licence is not enough unless the supplied text also
+  explains permission, conditions, or why the intended use is allowed.
+
+SELF-AUTHORED IMAGES
+
+If the evidence explicitly indicates that the page author created,
+photographed, or owns the image:
+
+- treat the creator as identified;
+- do not require a third-party licence;
+- treat the ownership claim as the permission basis;
+- do not require an external licence URL;
+- set manual_review_required to true when the ownership claim cannot
+  be independently verified from the supplied evidence.
+
+KNOWN PLATFORM LICENCES
+
+Recognise these as valid licence names when they are explicitly
+present in the supplied webpage evidence:
+
+- Pexels License
+- Unsplash License
+- Pixabay Content License
+
+Do not infer these licences merely from the image URL or host.
 
 ASSESSMENT CRITERIA
 
@@ -96,34 +163,48 @@ Assess all six criteria:
 
 1. Copyright owner identified
 
-Pass when the creator, photographer, author, copyright owner,
-or equivalent rights holder is explicitly identified.
+Pass only when the creator, photographer, author, copyright owner,
+or equivalent rights holder is explicitly identified in the supplied
+evidence.
 
 2. Licence identified
 
-Pass when a recognised licence or clear permission statement
-is explicitly identified.
+Pass only when a recognised licence, ownership claim, permission
+statement, or other applicable permission basis is explicitly
+identified in the supplied evidence.
 
 3. Licence URL provided
 
-Pass when a direct licence or source URL is supplied.
+Pass only when a direct licence URL or relevant permission page is
+explicitly supplied in the evidence.
+
+For a clearly self-authored image, an external licence URL is not
+required.
 
 4. Attribution completeness
 
-Pass when the supplied attribution evidence identifies the creator
-or copyright owner and the applicable licence. Do not require HTML
-alt text or an HTML title unless those fields contain relevant
-attribution evidence.
+Pass only when both:
+
+- the creator or copyright owner is identified; and
+- the applicable licence or permission basis is identified.
+
+Do not pass this criterion when either of those two requirements fails.
 
 5. Licence conditions understood
 
-Pass when the supplied text demonstrates an understanding of the
-licence conditions or permitted use.
+Pass only when the supplied text demonstrates an understanding of
+the applicable licence conditions, permission, or permitted use.
+
+Do not pass this criterion when no applicable licence or permission
+basis has been identified.
 
 6. Usage limits checked
 
-Pass when the declared intended use does not conflict with the
-detected licence restrictions.
+Pass only when an applicable licence or permission basis has been
+identified and the declared intended use does not conflict with it.
+
+Do not pass this criterion when no applicable licence or permission
+basis has been identified.
 
 For every criterion, return:
 
@@ -154,26 +235,26 @@ Classify the image as exactly one of:
 - Partially Compliant
 - Non-Compliant
 
-Use these general principles:
+Use these principles:
 
 Fully Compliant:
-The available evidence clearly satisfies all important requirements
-and no licence-use conflict is detected.
+All six criteria pass and no licence-use conflict is detected.
 
 Partially Compliant:
-Some requirements are satisfied, but evidence is incomplete,
-ambiguous, or requires correction.
+The creator and licence or permission basis are identified, but one
+or more non-critical requirements are incomplete or ambiguous.
 
 Non-Compliant:
-Major attribution or licence information is missing, or the
-declared use clearly conflicts with the licence.
+The creator is not identified, the applicable licence or permission
+basis is not identified, or the declared use clearly conflicts with
+the applicable restrictions.
 
 MANUAL REVIEW
 
 Set manual_review_required to true when:
 
 - the evidence is contradictory;
-- an ownership claim cannot be verified;
+- an ownership claim cannot be independently verified;
 - the licence is unclear or unsupported;
 - the rule cannot be determined reliably from the available text;
 - a legal or factual conclusion would require external evidence.
@@ -187,6 +268,151 @@ Return only JSON matching the supplied schema.
 """.strip()
 
 
+def _criterion_map(
+    assessment: LlmImageAssessment,
+) -> dict[str, object]:
+    """
+    Return the assessment criteria indexed by exact criterion name.
+    """
+
+    return {
+        criterion.criterion: criterion
+        for criterion in assessment.criteria
+    }
+
+
+def _apply_logical_consistency_rules(
+    assessment: LlmImageAssessment,
+) -> LlmImageAssessment:
+    """
+    Enforce deterministic consistency between related LLM criteria.
+
+    The model provides contextual reasoning, while these rules prevent
+    impossible combinations such as attribution completeness passing
+    when the creator or licence was not identified.
+    """
+
+    criteria = _criterion_map(
+        assessment
+    )
+
+    owner = criteria.get(
+        "Copyright owner identified"
+    )
+
+    licence = criteria.get(
+        "Licence identified"
+    )
+
+    licence_url = criteria.get(
+        "Licence URL provided"
+    )
+
+    attribution = criteria.get(
+        "Attribution completeness"
+    )
+
+    conditions = criteria.get(
+        "Licence conditions understood"
+    )
+
+    usage = criteria.get(
+        "Usage limits checked"
+    )
+
+    owner_passed = bool(
+        owner is not None
+        and owner.passed
+    )
+
+    licence_passed = bool(
+        licence is not None
+        and licence.passed
+    )
+
+    licence_url_passed = bool(
+        licence_url is not None
+        and licence_url.passed
+    )
+
+    if attribution is not None:
+        attribution.passed = (
+            owner_passed
+            and licence_passed
+        )
+
+        if not attribution.passed:
+            attribution.rationale = (
+                "Attribution completeness cannot pass because "
+                "the supplied evidence does not identify both "
+                "the creator or copyright owner and an applicable "
+                "licence or permission basis."
+            )
+
+    if conditions is not None:
+        if not licence_passed:
+            conditions.passed = False
+            conditions.rationale = (
+                "Licence conditions cannot be confirmed because "
+                "no applicable licence or permission basis was "
+                "identified in the supplied webpage evidence."
+            )
+
+    if usage is not None:
+        if not licence_passed:
+            usage.passed = False
+            usage.rationale = (
+                "Usage limits cannot be confirmed because no "
+                "applicable licence or permission basis was "
+                "identified in the supplied webpage evidence."
+            )
+
+    passed_count = sum(
+        criterion.passed
+        for criterion in assessment.criteria
+    )
+
+    if (
+        not owner_passed
+        or not licence_passed
+    ):
+        assessment.overall_label = (
+            "Non-Compliant"
+        )
+
+        assessment.explanation = (
+            "The image is non-compliant because the supplied "
+            "webpage evidence does not identify both the creator "
+            "or copyright owner and an applicable licence or "
+            "permission basis."
+        )
+
+    elif (
+        passed_count
+        == len(assessment.criteria)
+    ):
+        assessment.overall_label = (
+            "Fully Compliant"
+        )
+
+    else:
+        assessment.overall_label = (
+            "Partially Compliant"
+        )
+
+    if (
+        not licence_url_passed
+        and licence_passed
+        and assessment.overall_label
+        == "Fully Compliant"
+    ):
+        assessment.overall_label = (
+            "Partially Compliant"
+        )
+
+    return assessment
+
+
 def assess_image_with_llm(
     evidence: AttributionEvidence,
     intended_use: str,
@@ -194,7 +420,7 @@ def assess_image_with_llm(
     timeout_seconds: int = 600,
 ) -> LlmImageAssessment:
     """
-    Send evidence to Ollama and validate the structured response.
+    Send image evidence to Ollama and validate the structured result.
 
     Args:
         evidence:
@@ -210,7 +436,7 @@ def assess_image_with_llm(
             Maximum time allowed for the local model to respond.
 
     Returns:
-        A validated LlmImageAssessment.
+        A validated and logically consistent LlmImageAssessment.
 
     Raises:
         LlmReasoningError:
@@ -253,7 +479,11 @@ def assess_image_with_llm(
 
     try:
         response_data = response.json()
-        generated_text = response_data["response"]
+
+        generated_text = (
+            response_data["response"]
+        )
+
         generated_json = json.loads(
             generated_text
         )
@@ -268,18 +498,22 @@ def assess_image_with_llm(
             "Ollama returned an invalid JSON response."
         ) from error
 
-    # The application controls the image source.
-    # The model is not allowed to alter or invent it.
     generated_json["image_src"] = (
         evidence.image.src
     )
 
     try:
-        return LlmImageAssessment.model_validate(
-            generated_json
+        assessment = (
+            LlmImageAssessment.model_validate(
+                generated_json
+            )
         )
 
     except ValidationError as error:
         raise LlmReasoningError(
             "The LLM response did not match the required schema."
         ) from error
+
+    return _apply_logical_consistency_rules(
+        assessment
+    )
