@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -15,9 +15,26 @@ class AnalyseHtmlRequest(BaseModel):
     Request body for analysing HTML supplied directly.
     """
 
-    html: str
-    base_url: Optional[str] = None
-    intended_use: str = "educational coursework"
+    html: str = Field(
+        min_length=1,
+        description="The complete HTML content to analyse.",
+    )
+
+    base_url: str | None = Field(
+        default=None,
+        description=(
+            "Optional base URL used to resolve relative image "
+            "and licence links."
+        ),
+    )
+
+    intended_use: str = Field(
+        default="educational coursework",
+        min_length=1,
+        description=(
+            "The declared purpose for which the images are used."
+        ),
+    )
 
 
 class AnalyseUrlRequest(BaseModel):
@@ -25,283 +42,260 @@ class AnalyseUrlRequest(BaseModel):
     Request body for analysing a webpage using its URL.
     """
 
-    url: str
-    intended_use: str = "educational coursework"
+    url: str = Field(
+        min_length=1,
+        description="The webpage URL to analyse.",
+    )
+
+    intended_use: str = Field(
+        default="educational coursework",
+        min_length=1,
+        description=(
+            "The declared purpose for which the images are used."
+        ),
+    )
 
 
 class ParsedHtml(BaseModel):
     """
-    Stores parsed HTML, visible page text, and an optional
-    base URL.
+    Store parsed HTML, visible page text, and an optional base URL.
     """
 
     html: str
     text: str
-    base_url: Optional[str] = None
+    base_url: str | None = None
 
 
 class ImageRecord(BaseModel):
     """
-    Stores information extracted from one image element.
+    Store information extracted from one HTML image element.
     """
 
-    src: str
-    alt: Optional[str] = None
-    title: Optional[str] = None
+    src: str = Field(
+        min_length=1,
+        description="The image source path or URL.",
+    )
+
+    alt: str | None = None
+    title: str | None = None
 
 
 class AttributionEvidence(BaseModel):
     """
-    Stores attribution and licence evidence associated
-    with one image.
+    Store attribution and licence evidence associated with one image.
     """
 
     image: ImageRecord
+
     nearby_text: str = ""
-    caption: Optional[str] = None
-    licence_name: Optional[str] = None
-    licence_url: Optional[str] = None
-    possible_author: Optional[str] = None
+    caption: str | None = None
+
+    possible_author: str | None = None
+    licence_name: str | None = None
+    licence_url: str | None = None
 
 
 class CriterionResult(BaseModel):
     """
-    Stores one rule-based compliance criterion result.
+    Store one deterministic rule-based criterion result.
     """
 
-    criterion: str
+    criterion: str = Field(
+        min_length=1,
+    )
+
     passed: bool
-    score: int = Field(ge=0)
-    weight: int = Field(ge=0)
-    rationale: str
+
+    score: int = Field(
+        ge=0,
+        description="Points awarded for this criterion.",
+    )
+
+    weight: int = Field(
+        ge=0,
+        description="Maximum points available for this criterion.",
+    )
+
+    rationale: str = Field(
+        min_length=1,
+        description=(
+            "Explanation of why the criterion passed or failed."
+        ),
+    )
 
 
 class ImageAssessment(BaseModel):
     """
-    Stores the complete rule-based assessment for one image.
+    Store the complete deterministic rule-based assessment
+    for one image.
     """
 
-    image_src: str
+    image_src: str = Field(
+        min_length=1,
+    )
 
     total_score: int = Field(
         ge=0,
         le=100,
         description=(
-            "Rule-based compliance score expressed "
-            "as a percentage."
+            "Rule-based compliance score expressed as a percentage."
         ),
     )
 
     label: ComplianceLabel
-    criteria: List[CriterionResult]
 
-    recommendations: List[str] = Field(
-        default_factory=list
+    criteria: list[CriterionResult] = Field(
+        description=(
+            "Results for the four required copyright criteria."
+        ),
+    )
+
+    manual_review_required: bool = False
+
+    manual_review_reason: str | None = Field(
+        default=None,
+        description=(
+            "A clear explanation of why human review is required. "
+            "This should be null when manual review is not required."
+        ),
+    )
+
+    recommendations: list[str] = Field(
+        default_factory=list,
     )
 
 
 class LlmCriterionAssessment(BaseModel):
     """
-    Stores the AI decision for one compliance criterion.
+    Store the AI assessment for one compliance criterion.
     """
 
-    criterion: str
+    criterion: str = Field(
+        min_length=1,
+    )
+
     passed: bool
 
     rationale: str = Field(
-        min_length=1
+        min_length=1,
+        description=(
+            "The AI explanation for why the criterion passed or failed."
+        ),
     )
 
 
 class LlmImageAssessment(BaseModel):
     """
-    Stores the complete structured AI assessment
-    for one image.
+    Store the complete structured AI assessment for one image.
     """
 
-    image_src: str
+    image_src: str = Field(
+        min_length=1,
+    )
+
     overall_label: ComplianceLabel
-    criteria: List[LlmCriterionAssessment]
+
+    criteria: list[LlmCriterionAssessment] = Field(
+        description=(
+            "AI results for the four required copyright criteria."
+        ),
+    )
 
     explanation: str = Field(
-        min_length=1
+        min_length=1,
+        description=(
+            "A concise explanation of the AI's overall classification."
+        ),
     )
 
     manual_review_required: bool = False
 
-
-class HybridImageAssessment(BaseModel):
-    """
-    Stores the combined rule-based and AI decision
-    for one image.
-    """
-
-    image_src: str
-
-    rule_score: int = Field(
-        ge=0,
-        le=100,
+    manual_review_reason: str | None = Field(
+        default=None,
         description=(
-            "Rule-based compliance score expressed "
-            "as a percentage."
+            "A specific explanation of why the AI recommends human "
+            "review. This should be null when review is not required."
         ),
     )
 
-    rule_assessment: ComplianceLabel
-    ai_assessment: ComplianceLabel
-    final_assessment: ComplianceLabel
 
-    systems_agree: bool
-    manual_review_required: bool
+class ImageAnalysisResult(BaseModel):
+    """
+    Store the two separate assessments produced for one image.
 
-    criterion_disagreements: List[str] = Field(
-        default_factory=list
+    The rule-based result and AI result remain independent.
+    No automated comparison or hybrid result is produced.
+    """
+
+    image_src: str = Field(
+        min_length=1,
     )
 
-    explanation: str = Field(
-        min_length=1
-    )
-
-    recommendations: List[str] = Field(
-        default_factory=list
-    )
+    rule_based_result: ImageAssessment
+    ai_result: LlmImageAssessment
 
 
 class ComplianceReport(BaseModel):
     """
-    Stores the overall rule-based compliance report.
-    """
+    Store the complete report for a webpage or ZIP submission.
 
-    overall_score: int = Field(
-        ge=0,
-        le=100,
-        description=(
-            "Overall rule-based compliance score "
-            "expressed as a percentage."
-        ),
-    )
-
-    total_images: int = Field(ge=0)
-    fully_compliant: int = Field(ge=0)
-    partially_compliant: int = Field(ge=0)
-    non_compliant: int = Field(ge=0)
-
-    image_assessments: List[ImageAssessment]
-
-
-class HybridComplianceReport(BaseModel):
-    """
-    Stores the final combined report produced by the
-    hybrid decision engine.
-
-    The frontend will display user-friendly headings such as:
-
-    - Overall Score
-    - Overall Assessment
-    - Images Analysed
-    - Manual Review Required
-    """
-
-    overall_score: int = Field(
-        ge=0,
-        le=100,
-        description=(
-            "Average rule-based compliance score "
-            "expressed as a percentage."
-        ),
-    )
-
-    overall_assessment: ComplianceLabel
-
-    total_images: int = Field(ge=0)
-    fully_compliant: int = Field(ge=0)
-    partially_compliant: int = Field(ge=0)
-    non_compliant: int = Field(ge=0)
-
-    manual_review_required: bool
-    manual_review_count: int = Field(ge=0)
-
-    systems_agree_count: int = Field(ge=0)
-    systems_disagree_count: int = Field(ge=0)
-
-    summary: str = Field(
-        min_length=1
-    )
-
-    image_assessments: List[HybridImageAssessment]
-
-class ComparisonAssessment(BaseModel):
-    """
-    Compares the rule-based and AI assessments without
-    automatically replacing them with one final decision.
-    """
-
-    image_src: str
-
-    rule_assessment: ComplianceLabel
-    ai_assessment: ComplianceLabel
-
-    systems_agree: bool
-    manual_review_recommended: bool
-
-    criterion_disagreements: List[str] = Field(
-        default_factory=list
-    )
-
-    explanation: str = Field(
-        min_length=1
-    )
-
-
-class ThreeResultImageAssessment(BaseModel):
-    """
-    Presents the three separate results for one image:
-
-    1. Rule-based assessment
-    2. AI assessment
-    3. Comparison assessment
-    """
-
-    image_src: str
-
-    rule_based_result: ImageAssessment
-    ai_result: LlmImageAssessment
-    comparison_result: ComparisonAssessment
-
-
-class ThreeResultComplianceReport(BaseModel):
-    """
-    Stores the complete three-result report for a webpage
-    or ZIP submission.
+    The report presents deterministic and AI assessments separately.
+    It does not contain comparison-engine output, agreement counts,
+    disagreement counts, or a hybrid final assessment.
     """
 
     overall_rule_score: int = Field(
         ge=0,
         le=100,
         description=(
-            "Average deterministic rule-based score "
-            "expressed as a percentage."
+            "Average deterministic rule-based score expressed "
+            "as a percentage."
         ),
     )
 
-    total_images: int = Field(ge=0)
-
-    rule_fully_compliant: int = Field(ge=0)
-    rule_partially_compliant: int = Field(ge=0)
-    rule_non_compliant: int = Field(ge=0)
-
-    ai_fully_compliant: int = Field(ge=0)
-    ai_partially_compliant: int = Field(ge=0)
-    ai_non_compliant: int = Field(ge=0)
-
-    systems_agree_count: int = Field(ge=0)
-    systems_disagree_count: int = Field(ge=0)
-
-    manual_review_recommended: bool
-    manual_review_count: int = Field(ge=0)
-
-    summary: str = Field(
-        min_length=1
+    total_images: int = Field(
+        ge=0,
     )
 
-    image_results: List[ThreeResultImageAssessment]
+    rule_fully_compliant: int = Field(
+        ge=0,
+    )
+
+    rule_partially_compliant: int = Field(
+        ge=0,
+    )
+
+    rule_non_compliant: int = Field(
+        ge=0,
+    )
+
+    ai_fully_compliant: int = Field(
+        ge=0,
+    )
+
+    ai_partially_compliant: int = Field(
+        ge=0,
+    )
+
+    ai_non_compliant: int = Field(
+        ge=0,
+    )
+
+    manual_review_recommended: bool = False
+
+    manual_review_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Number of images for which either assessment recommends "
+            "manual review."
+        ),
+    )
+
+    summary: str = Field(
+        min_length=1,
+    )
+
+    image_results: list[ImageAnalysisResult] = Field(
+        default_factory=list,
+    )

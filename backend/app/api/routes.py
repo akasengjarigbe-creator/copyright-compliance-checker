@@ -1,4 +1,5 @@
 from pathlib import PurePosixPath
+from typing import NoReturn
 
 from fastapi import (
     APIRouter,
@@ -16,9 +17,7 @@ from app.crawler.zip_processor import (
     ZipProcessingError,
     read_html_documents_from_zip,
 )
-from app.detector.image_detector import (
-    detect_images,
-)
+from app.detector.image_detector import detect_images
 from app.extractor.attribution_extractor import (
     extract_attribution_evidence,
 )
@@ -29,47 +28,46 @@ from app.llm.llm_reasoner import (
 from app.models.schemas import (
     AnalyseHtmlRequest,
     AnalyseUrlRequest,
+    ComplianceReport,
     ImageAssessment,
     LlmImageAssessment,
-    ThreeResultComplianceReport,
 )
 from app.parser.html_parser import parse_html
-from app.report.three_result_report_generator import (
-    build_three_result_report,
-)
-from app.rule_engine.rule_checker import (
-    assess_images,
-)
+from app.report.report_generator import build_report
+from app.rule_engine.rule_checker import assess_images
 
 
 router = APIRouter()
 
 
-def _analyse_html_content(
+def _analyse_page(
     html: str,
     base_url: str | None,
     intended_use: str,
-) -> ThreeResultComplianceReport:
+) -> tuple[
+    list[ImageAssessment],
+    list[LlmImageAssessment],
+]:
     """
-    Analyse one HTML page using:
+    Analyse one HTML page using both assessment methods.
 
-    1. The deterministic rule engine
-    2. The local AI reasoning module
-    3. The comparison engine
+    The deterministic rule-based assessment and the AI
+    assessment are produced separately. No comparison or
+    hybrid result is generated.
     """
 
-    parsed = parse_html(
+    parsed_document = parse_html(
         html,
         base_url=base_url,
     )
 
-    images = detect_images(parsed)
+    images = detect_images(
+        parsed_document
+    )
 
-    evidence_items = (
-        extract_attribution_evidence(
-            parsed,
-            images,
-        )
+    evidence_items = extract_attribution_evidence(
+        parsed_document,
+        images,
     )
 
     rule_assessments = assess_images(
@@ -82,18 +80,40 @@ def _analyse_html_content(
     ] = []
 
     for evidence in evidence_items:
-        ai_assessment = (
-            assess_image_with_llm(
-                evidence=evidence,
-                intended_use=intended_use,
-            )
+        ai_assessment = assess_image_with_llm(
+            evidence=evidence,
+            intended_use=intended_use,
         )
 
         ai_assessments.append(
             ai_assessment
         )
 
-    return build_three_result_report(
+    return (
+        rule_assessments,
+        ai_assessments,
+    )
+
+
+def _analyse_html_content(
+    html: str,
+    base_url: str | None,
+    intended_use: str,
+) -> ComplianceReport:
+    """
+    Analyse one HTML document and build the final report.
+    """
+
+    (
+        rule_assessments,
+        ai_assessments,
+    ) = _analyse_page(
+        html=html,
+        base_url=base_url,
+        intended_use=intended_use,
+    )
+
+    return build_report(
         rule_assessments=rule_assessments,
         ai_assessments=ai_assessments,
     )
@@ -103,8 +123,10 @@ def _create_zip_page_base_url(
     relative_path: str,
 ) -> str:
     """
-    Create an internal base URL for an HTML page
-    contained in a ZIP submission.
+    Create an internal base URL for an HTML file in a ZIP.
+
+    The internal URL allows relative image paths and links
+    to be resolved consistently during parsing.
     """
 
     normalised_path = PurePosixPath(
@@ -120,12 +142,12 @@ def _create_zip_page_base_url(
 def _analyse_zip_content(
     zip_data: bytes,
     intended_use: str,
-) -> ThreeResultComplianceReport:
+) -> ComplianceReport:
     """
-    Analyse every HTML page contained in a ZIP file.
+    Analyse all HTML documents contained in a ZIP file.
 
-    All rule-based and AI image assessments are combined
-    into one three-result report.
+    Assessments from every page are combined into one
+    copyright compliance report.
     """
 
     documents = read_html_documents_from_zip(
@@ -145,40 +167,14 @@ def _analyse_zip_content(
             document.relative_path
         )
 
-        parsed = parse_html(
-            document.html,
+        (
+            page_rule_assessments,
+            page_ai_assessments,
+        ) = _analyse_page(
+            html=document.html,
             base_url=base_url,
-        )
-
-        images = detect_images(parsed)
-
-        evidence_items = (
-            extract_attribution_evidence(
-                parsed,
-                images,
-            )
-        )
-
-        page_rule_assessments = assess_images(
-            evidence_items,
             intended_use=intended_use,
         )
-
-        page_ai_assessments: list[
-            LlmImageAssessment
-        ] = []
-
-        for evidence in evidence_items:
-            ai_assessment = (
-                assess_image_with_llm(
-                    evidence=evidence,
-                    intended_use=intended_use,
-                )
-            )
-
-            page_ai_assessments.append(
-                ai_assessment
-            )
 
         all_rule_assessments.extend(
             page_rule_assessments
@@ -188,26 +184,53 @@ def _analyse_zip_content(
             page_ai_assessments
         )
 
-    return build_three_result_report(
-        rule_assessments=(
-            all_rule_assessments
-        ),
-        ai_assessments=(
-            all_ai_assessments
-        ),
+    return build_report(
+        rule_assessments=all_rule_assessments,
+        ai_assessments=all_ai_assessments,
     )
+
+
+def _raise_llm_http_error(
+    error: LlmReasoningError,
+) -> NoReturn:
+    """
+    Convert an AI reasoning failure into an HTTP 503 response.
+    """
+
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "The AI assessment could not be completed: "
+            f"{error}"
+        ),
+    ) from error
+
+
+def _raise_value_http_error(
+    error: ValueError,
+) -> NoReturn:
+    """
+    Convert a validation or processing failure into HTTP 400.
+    """
+
+    raise HTTPException(
+        status_code=400,
+        detail=str(error),
+    ) from error
 
 
 @router.post(
     "/analyse-html",
-    response_model=ThreeResultComplianceReport,
+    response_model=ComplianceReport,
 )
 def analyse_html(
     payload: AnalyseHtmlRequest,
-) -> ThreeResultComplianceReport:
+) -> ComplianceReport:
     """
-    Analyse HTML and return separate rule-based,
-    AI, and comparison results.
+    Analyse submitted HTML.
+
+    The response contains separate rule-based and AI
+    copyright compliance assessments.
     """
 
     try:
@@ -218,31 +241,28 @@ def analyse_html(
         )
 
     except LlmReasoningError as error:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "The AI assessment could not "
-                f"be completed: {error}"
-            ),
-        ) from error
+        _raise_llm_http_error(
+            error
+        )
 
     except ValueError as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error),
-        ) from error
+        _raise_value_http_error(
+            error
+        )
 
 
 @router.post(
     "/analyse-url",
-    response_model=ThreeResultComplianceReport,
+    response_model=ComplianceReport,
 )
 def analyse_url(
     payload: AnalyseUrlRequest,
-) -> ThreeResultComplianceReport:
+) -> ComplianceReport:
     """
-    Retrieve a webpage and return separate rule-based,
-    AI, and comparison results.
+    Retrieve and analyse a webpage by URL.
+
+    The response contains separate rule-based and AI
+    copyright compliance assessments.
     """
 
     try:
@@ -263,35 +283,31 @@ def analyse_url(
         ) from error
 
     except LlmReasoningError as error:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "The AI assessment could not "
-                f"be completed: {error}"
-            ),
-        ) from error
+        _raise_llm_http_error(
+            error
+        )
 
     except ValueError as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error),
-        ) from error
+        _raise_value_http_error(
+            error
+        )
 
 
 @router.post(
     "/analyse-zip",
-    response_model=ThreeResultComplianceReport,
+    response_model=ComplianceReport,
 )
 async def analyse_zip(
     file: UploadFile = File(...),
     intended_use: str = Form(
         "educational coursework"
     ),
-) -> ThreeResultComplianceReport:
+) -> ComplianceReport:
     """
-    Analyse every HTML page in an uploaded ZIP file
-    and return separate rule-based, AI, and comparison
-    results.
+    Analyse every HTML page in an uploaded ZIP file.
+
+    Results from all pages are combined into one report
+    containing separate rule-based and AI assessments.
     """
 
     filename = file.filename or ""
@@ -310,6 +326,14 @@ async def analyse_zip(
     try:
         zip_data = await file.read()
 
+        if not zip_data:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The uploaded ZIP file is empty."
+                ),
+            )
+
         return _analyse_zip_content(
             zip_data=zip_data,
             intended_use=intended_use,
@@ -322,19 +346,14 @@ async def analyse_zip(
         ) from error
 
     except LlmReasoningError as error:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "The AI assessment could not "
-                f"be completed: {error}"
-            ),
-        ) from error
+        _raise_llm_http_error(
+            error
+        )
 
     except ValueError as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error),
-        ) from error
+        _raise_value_http_error(
+            error
+        )
 
     finally:
         await file.close()
