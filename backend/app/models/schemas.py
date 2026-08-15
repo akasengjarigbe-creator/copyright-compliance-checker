@@ -24,7 +24,7 @@ class AnalyseHtmlRequest(BaseModel):
         default=None,
         description=(
             "Optional base URL used to resolve relative image "
-            "and licence links."
+            "and hyperlink paths."
         ),
     )
 
@@ -39,7 +39,7 @@ class AnalyseHtmlRequest(BaseModel):
 
 class AnalyseUrlRequest(BaseModel):
     """
-    Request body for analysing a webpage using its URL.
+    Request body for analysing a webpage by URL.
     """
 
     url: str = Field(
@@ -58,7 +58,7 @@ class AnalyseUrlRequest(BaseModel):
 
 class ParsedHtml(BaseModel):
     """
-    Store parsed HTML, visible page text, and an optional base URL.
+    Store parsed HTML, visible page text, and optional base URL.
     """
 
     html: str
@@ -68,21 +68,28 @@ class ParsedHtml(BaseModel):
 
 class ImageRecord(BaseModel):
     """
-    Store information extracted from one HTML image element.
+    Information extracted from one HTML img element.
     """
 
     src: str = Field(
         min_length=1,
-        description="The image source path or URL.",
+        description=(
+            "The resolved technical image source path or URL. "
+            "This is not automatically copyright attribution."
+        ),
     )
 
     alt: str | None = None
     title: str | None = None
 
+    attributes: dict[str, str] = Field(
+        default_factory=dict,
+    )
+
 
 class AttributionEvidence(BaseModel):
     """
-    Store attribution and licence evidence associated with one image.
+    Copyright and licence evidence associated with one image.
     """
 
     image: ImageRecord
@@ -90,14 +97,70 @@ class AttributionEvidence(BaseModel):
     nearby_text: str = ""
     caption: str | None = None
 
+    # ---------------------------------------------------------
+    # Copyright owner / creator
+    # ---------------------------------------------------------
+
     possible_author: str | None = None
+
+    author_evidence_text: str | None = None
+    author_evidence_source: str | None = None
+
+    # ---------------------------------------------------------
+    # Explicit source/reference information
+    # ---------------------------------------------------------
+
+    source_name: str | None = Field(
+        default=None,
+        description=(
+            "Explicitly supplied source website/domain. "
+            "This must not be inferred solely from image.src."
+        ),
+    )
+
+    source_url: str | None = Field(
+        default=None,
+        description=(
+            "Explicitly supplied image source/reference URL. "
+            "This must not be inferred solely from image.src."
+        ),
+    )
+
+    source_evidence_text: str | None = None
+    source_evidence_source: str | None = None
+
+    # ---------------------------------------------------------
+    # Licence / permission
+    # ---------------------------------------------------------
+
     licence_name: str | None = None
+
+    licence_evidence_text: str | None = None
+    licence_evidence_source: str | None = None
+
+    # Location of applicable licence terms.
     licence_url: str | None = None
+
+    licence_url_evidence_text: str | None = None
+    licence_url_evidence_source: str | None = None
+
+    # Optional copyright/rights information.
+    rights_url: str | None = None
+
+    rights_evidence_text: str | None = None
+    rights_evidence_source: str | None = None
+
+    # ---------------------------------------------------------
+    # Internal diagnostics
+    # ---------------------------------------------------------
+
+    image_html: str | None = None
+    analysed_html_fragment: str | None = None
 
 
 class CriterionResult(BaseModel):
     """
-    Store one deterministic rule-based criterion result.
+    One deterministic criterion result.
     """
 
     criterion: str = Field(
@@ -108,26 +171,20 @@ class CriterionResult(BaseModel):
 
     score: int = Field(
         ge=0,
-        description="Points awarded for this criterion.",
     )
 
     weight: int = Field(
         ge=0,
-        description="Maximum points available for this criterion.",
     )
 
     rationale: str = Field(
         min_length=1,
-        description=(
-            "Explanation of why the criterion passed or failed."
-        ),
     )
 
 
 class ImageAssessment(BaseModel):
     """
-    Store the complete deterministic rule-based assessment
-    for one image.
+    Complete deterministic assessment for one image.
     """
 
     image_src: str = Field(
@@ -137,28 +194,15 @@ class ImageAssessment(BaseModel):
     total_score: int = Field(
         ge=0,
         le=100,
-        description=(
-            "Rule-based compliance score expressed as a percentage."
-        ),
     )
 
     label: ComplianceLabel
 
-    criteria: list[CriterionResult] = Field(
-        description=(
-            "Results for the four required copyright criteria."
-        ),
-    )
+    criteria: list[CriterionResult]
 
     manual_review_required: bool = False
 
-    manual_review_reason: str | None = Field(
-        default=None,
-        description=(
-            "A clear explanation of why human review is required. "
-            "This should be null when manual review is not required."
-        ),
-    )
+    manual_review_reason: str | None = None
 
     recommendations: list[str] = Field(
         default_factory=list,
@@ -167,7 +211,7 @@ class ImageAssessment(BaseModel):
 
 class LlmCriterionAssessment(BaseModel):
     """
-    Store the AI assessment for one compliance criterion.
+    One AI criterion result.
     """
 
     criterion: str = Field(
@@ -178,15 +222,12 @@ class LlmCriterionAssessment(BaseModel):
 
     rationale: str = Field(
         min_length=1,
-        description=(
-            "The AI explanation for why the criterion passed or failed."
-        ),
     )
 
 
 class LlmImageAssessment(BaseModel):
     """
-    Store the complete structured AI assessment for one image.
+    Complete structured AI assessment for one image.
     """
 
     image_src: str = Field(
@@ -195,41 +236,27 @@ class LlmImageAssessment(BaseModel):
 
     overall_label: ComplianceLabel
 
-    criteria: list[LlmCriterionAssessment] = Field(
-        description=(
-            "AI results for the four required copyright criteria."
-        ),
-    )
+    criteria: list[LlmCriterionAssessment]
 
     explanation: str = Field(
         min_length=1,
-        description=(
-            "A concise explanation of the AI's overall classification."
-        ),
     )
 
     manual_review_required: bool = False
 
-    manual_review_reason: str | None = Field(
-        default=None,
-        description=(
-            "A specific explanation of why the AI recommends human "
-            "review. This should be null when review is not required."
-        ),
-    )
+    manual_review_reason: str | None = None
 
 
 class ImageAnalysisResult(BaseModel):
     """
-    Store the two separate assessments produced for one image.
-
-    The rule-based result and AI result remain independent.
-    No automated comparison or hybrid result is produced.
+    Evidence and two independent assessments for one image.
     """
 
     image_src: str = Field(
         min_length=1,
     )
+
+    evidence: AttributionEvidence
 
     rule_based_result: ImageAssessment
     ai_result: LlmImageAssessment
@@ -237,20 +264,12 @@ class ImageAnalysisResult(BaseModel):
 
 class ComplianceReport(BaseModel):
     """
-    Store the complete report for a webpage or ZIP submission.
-
-    The report presents deterministic and AI assessments separately.
-    It does not contain comparison-engine output, agreement counts,
-    disagreement counts, or a hybrid final assessment.
+    Complete assessment report.
     """
 
     overall_rule_score: int = Field(
         ge=0,
         le=100,
-        description=(
-            "Average deterministic rule-based score expressed "
-            "as a percentage."
-        ),
     )
 
     total_images: int = Field(
@@ -286,15 +305,13 @@ class ComplianceReport(BaseModel):
     manual_review_count: int = Field(
         default=0,
         ge=0,
-        description=(
-            "Number of images for which either assessment recommends "
-            "manual review."
-        ),
     )
 
     summary: str = Field(
         min_length=1,
     )
+
+    analysed_html: str | None = None
 
     image_results: list[ImageAnalysisResult] = Field(
         default_factory=list,

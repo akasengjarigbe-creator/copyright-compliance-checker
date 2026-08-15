@@ -3,54 +3,112 @@ export type ComplianceLabel =
   | "Partially Compliant"
   | "Non-Compliant";
 
+
+export interface ImageRecord {
+  src: string;
+
+  alt: string | null;
+  title: string | null;
+
+  attributes: Record<string, string>;
+}
+
+
+export interface AttributionEvidence {
+  image: ImageRecord;
+
+  nearby_text: string;
+  caption: string | null;
+
+  possible_author: string | null;
+
+  licence_name: string | null;
+  licence_url: string | null;
+
+  rights_url: string | null;
+
+  source_name: string | null;
+  source_url: string | null;
+
+  image_html: string | null;
+  analysed_html_fragment: string | null;
+
+  author_evidence_text: string | null;
+  author_evidence_source: string | null;
+
+  licence_evidence_text: string | null;
+  licence_evidence_source: string | null;
+
+  licence_url_evidence_text: string | null;
+  licence_url_evidence_source: string | null;
+
+  source_evidence_text: string | null;
+  source_evidence_source: string | null;
+
+  rights_evidence_text: string | null;
+  rights_evidence_source: string | null;
+}
+
+
 export interface CriterionResult {
   criterion: string;
   passed: boolean;
+
   score: number;
   weight: number;
+
   rationale: string;
 }
 
+
 export interface RuleBasedAssessment {
   image_src: string;
+
   total_score: number;
   label: ComplianceLabel;
+
   criteria: CriterionResult[];
+
+  manual_review_required: boolean;
+  manual_review_reason: string | null;
+
   recommendations: string[];
 }
+
 
 export interface AiCriterionAssessment {
   criterion: string;
   passed: boolean;
+
   rationale: string;
 }
 
+
 export interface AiAssessment {
   image_src: string;
+
   overall_label: ComplianceLabel;
+
   criteria: AiCriterionAssessment[];
+
   explanation: string;
+
   manual_review_required: boolean;
+  manual_review_reason: string | null;
 }
 
-export interface ComparisonAssessment {
-  image_src: string;
-  rule_assessment: ComplianceLabel;
-  ai_assessment: ComplianceLabel;
-  systems_agree: boolean;
-  manual_review_recommended: boolean;
-  criterion_disagreements: string[];
-  explanation: string;
-}
 
-export interface ThreeResultImageAssessment {
+export interface ImageAnalysisResult {
   image_src: string;
+
+  evidence: AttributionEvidence;
+
   rule_based_result: RuleBasedAssessment;
   ai_result: AiAssessment;
-  comparison_result: ComparisonAssessment;
 }
 
-export interface ThreeResultComplianceReport {
+
+export interface ComplianceReport {
   overall_rule_score: number;
   total_images: number;
 
@@ -62,12 +120,10 @@ export interface ThreeResultComplianceReport {
   ai_partially_compliant: number;
   ai_non_compliant: number;
 
-  systems_agree_count: number;
-  systems_disagree_count: number;
-
   manual_review_recommended: boolean;
   manual_review_count: number;
 
   summary: string;
-  image_results: ThreeResultImageAssessment[];
+
+  image_results: ImageAnalysisResult[];
 }

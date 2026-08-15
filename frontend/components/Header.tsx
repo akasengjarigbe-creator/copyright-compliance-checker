@@ -9,10 +9,8 @@ export default function Header() {
         Copyright Compliance Checker
       </h1>
 
-      <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">
-        Analyse webpages, HTML source code, or ZIP website submissions using
-        rule-based checks, AI reasoning, and a transparent comparison of both
-        results.
+      <p className="mx-auto mt-4 text-base leading-7 text-slate-600 md:whitespace-nowrap">
+        Analyse webpages, HTML source code, or ZIP website submissions using rule-based checks and AI reasoning.
       </p>
     </header>
   );

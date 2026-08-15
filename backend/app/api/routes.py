@@ -28,6 +28,7 @@ from app.llm.llm_reasoner import (
 from app.models.schemas import (
     AnalyseHtmlRequest,
     AnalyseUrlRequest,
+    AttributionEvidence,
     ComplianceReport,
     ImageAssessment,
     LlmImageAssessment,
@@ -45,15 +46,22 @@ def _analyse_page(
     base_url: str | None,
     intended_use: str,
 ) -> tuple[
+    list[AttributionEvidence],
     list[ImageAssessment],
     list[LlmImageAssessment],
 ]:
     """
-    Analyse one HTML page using both assessment methods.
+    Analyse one HTML page.
 
-    The deterministic rule-based assessment and the AI
-    assessment are produced separately. No comparison or
-    hybrid result is generated.
+    The analysis process:
+
+    1. Parses the HTML.
+    2. Detects images.
+    3. Extracts copyright, source and licence evidence.
+    4. Runs the deterministic rule-based assessment.
+    5. Runs the AI-assisted assessment.
+
+    The rule-based and AI assessments remain independent.
     """
 
     parsed_document = parse_html(
@@ -65,9 +73,11 @@ def _analyse_page(
         parsed_document
     )
 
-    evidence_items = extract_attribution_evidence(
-        parsed_document,
-        images,
+    evidence_items = (
+        extract_attribution_evidence(
+            parsed_document,
+            images,
+        )
     )
 
     rule_assessments = assess_images(
@@ -80,9 +90,11 @@ def _analyse_page(
     ] = []
 
     for evidence in evidence_items:
-        ai_assessment = assess_image_with_llm(
-            evidence=evidence,
-            intended_use=intended_use,
+        ai_assessment = (
+            assess_image_with_llm(
+                evidence=evidence,
+                intended_use=intended_use,
+            )
         )
 
         ai_assessments.append(
@@ -90,6 +102,7 @@ def _analyse_page(
         )
 
     return (
+        evidence_items,
         rule_assessments,
         ai_assessments,
     )
@@ -102,9 +115,14 @@ def _analyse_html_content(
 ) -> ComplianceReport:
     """
     Analyse one HTML document and build the final report.
+
+    The complete HTML document is not included in the final
+    report. Only the evidence associated with each detected
+    image and the relevant analysed fragment are retained.
     """
 
     (
+        evidence_items,
         rule_assessments,
         ai_assessments,
     ) = _analyse_page(
@@ -114,6 +132,7 @@ def _analyse_html_content(
     )
 
     return build_report(
+        evidence_items=evidence_items,
         rule_assessments=rule_assessments,
         ai_assessments=ai_assessments,
     )
@@ -123,10 +142,11 @@ def _create_zip_page_base_url(
     relative_path: str,
 ) -> str:
     """
-    Create an internal base URL for an HTML file in a ZIP.
+    Create an internal URL representing an HTML file inside
+    a ZIP submission.
 
-    The internal URL allows relative image paths and links
-    to be resolved consistently during parsing.
+    This allows relative image paths and relative links to be
+    resolved consistently.
     """
 
     normalised_path = PurePosixPath(
@@ -146,13 +166,19 @@ def _analyse_zip_content(
     """
     Analyse all HTML documents contained in a ZIP file.
 
-    Assessments from every page are combined into one
-    copyright compliance report.
+    Evidence and assessments from each HTML page are combined
+    into a single compliance report.
     """
 
-    documents = read_html_documents_from_zip(
-        zip_data
+    documents = (
+        read_html_documents_from_zip(
+            zip_data
+        )
     )
+
+    all_evidence_items: list[
+        AttributionEvidence
+    ] = []
 
     all_rule_assessments: list[
         ImageAssessment
@@ -163,17 +189,24 @@ def _analyse_zip_content(
     ] = []
 
     for document in documents:
-        base_url = _create_zip_page_base_url(
-            document.relative_path
+        base_url = (
+            _create_zip_page_base_url(
+                document.relative_path
+            )
         )
 
         (
+            page_evidence_items,
             page_rule_assessments,
             page_ai_assessments,
         ) = _analyse_page(
             html=document.html,
             base_url=base_url,
             intended_use=intended_use,
+        )
+
+        all_evidence_items.extend(
+            page_evidence_items
         )
 
         all_rule_assessments.extend(
@@ -185,6 +218,7 @@ def _analyse_zip_content(
         )
 
     return build_report(
+        evidence_items=all_evidence_items,
         rule_assessments=all_rule_assessments,
         ai_assessments=all_ai_assessments,
     )
@@ -194,7 +228,11 @@ def _raise_llm_http_error(
     error: LlmReasoningError,
 ) -> NoReturn:
     """
-    Convert an AI reasoning failure into an HTTP 503 response.
+    Convert an AI-assessment failure into HTTP 503.
+
+    A 503 is used because the main application may be running
+    correctly while the local Ollama service is unavailable or
+    unable to complete the assessment.
     """
 
     raise HTTPException(
@@ -210,7 +248,7 @@ def _raise_value_http_error(
     error: ValueError,
 ) -> NoReturn:
     """
-    Convert a validation or processing failure into HTTP 400.
+    Convert a validation or report-building error into HTTP 400.
     """
 
     raise HTTPException(
@@ -227,10 +265,7 @@ def analyse_html(
     payload: AnalyseHtmlRequest,
 ) -> ComplianceReport:
     """
-    Analyse submitted HTML.
-
-    The response contains separate rule-based and AI
-    copyright compliance assessments.
+    Analyse HTML supplied directly by the user.
     """
 
     try:
@@ -259,10 +294,7 @@ def analyse_url(
     payload: AnalyseUrlRequest,
 ) -> ComplianceReport:
     """
-    Retrieve and analyse a webpage by URL.
-
-    The response contains separate rule-based and AI
-    copyright compliance assessments.
+    Retrieve a webpage and analyse its images.
     """
 
     try:
@@ -304,13 +336,12 @@ async def analyse_zip(
     ),
 ) -> ComplianceReport:
     """
-    Analyse every HTML page in an uploaded ZIP file.
-
-    Results from all pages are combined into one report
-    containing separate rule-based and AI assessments.
+    Analyse all HTML pages contained in a ZIP submission.
     """
 
-    filename = file.filename or ""
+    filename = (
+        file.filename or ""
+    )
 
     if not filename.lower().endswith(
         ".zip"
