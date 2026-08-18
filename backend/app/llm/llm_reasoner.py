@@ -15,17 +15,11 @@ OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 DEFAULT_MODEL = "llama3:8b"
 
 
-CRITERION_OWNER = (
-    "Copyright owner identified"
-)
+CRITERION_OWNER = "Copyright owner identified"
 
-CRITERION_LICENCE = (
-    "Licence or permission identified"
-)
+CRITERION_LICENCE = "Licence or permission identified"
 
-CRITERION_TERMS = (
-    "Licence terms location provided"
-)
+CRITERION_TERMS = "Licence terms location provided"
 
 
 REQUIRED_CRITERIA = (
@@ -35,9 +29,7 @@ REQUIRED_CRITERIA = (
 )
 
 
-SELF_AUTHORED_LICENCE = (
-    "Self-authored claim"
-)
+SELF_AUTHORED_LICENCE = "Self-authored claim"
 
 
 SELF_AUTHORSHIP_REVIEW_REASON = (
@@ -54,9 +46,18 @@ class LlmReasoningError(Exception):
     """
 
 
+# ============================================================
+# BASIC HELPERS
+# ============================================================
+
+
 def _has_text(
     value: str | None,
 ) -> bool:
+    """
+    Return True when a value contains useful non-empty text.
+    """
+
     return bool(
         value
         and value.strip()
@@ -66,9 +67,12 @@ def _has_text(
 def _display(
     value: str | None,
 ) -> str:
-    if not _has_text(
-        value
-    ):
+    """
+    Convert an optional value into text suitable for the
+    LLM prompt.
+    """
+
+    if not _has_text(value):
         return "Not detected"
 
     return value.strip()
@@ -77,6 +81,10 @@ def _display(
 def _normalise(
     value: str | None,
 ) -> str:
+    """
+    Normalise text for case-insensitive comparisons.
+    """
+
     if not value:
         return ""
 
@@ -89,6 +97,10 @@ def _append_sentence(
     existing: str,
     sentence: str,
 ) -> str:
+    """
+    Append one sentence to an existing rationale.
+    """
+
     existing = existing.strip()
     sentence = sentence.strip()
 
@@ -98,14 +110,22 @@ def _append_sentence(
     if not sentence:
         return existing
 
-    return (
-        f"{existing} {sentence}"
-    )
+    return f"{existing} {sentence}"
+
+
+# ============================================================
+# SELF AUTHORSHIP
+# ============================================================
 
 
 def _is_self_authored(
     evidence: AttributionEvidence,
 ) -> bool:
+    """
+    Determine whether the extractor has explicitly classified
+    the image as self-authored.
+    """
+
     return (
         _normalise(
             evidence.licence_name
@@ -117,7 +137,7 @@ def _is_self_authored(
 
 
 # ============================================================
-# EXPLICIT SOURCE ONLY
+# EXPLICIT SOURCE ATTRIBUTION
 # ============================================================
 
 
@@ -125,35 +145,33 @@ def _explicit_source_reference(
     evidence: AttributionEvidence,
 ) -> str | None:
     """
-    Return only source attribution actually extracted from
-    the student's webpage.
+    Return only source/reference information explicitly
+    extracted from the student's webpage.
 
-    evidence.image.src is NEVER used.
+    evidence.image.src is deliberately never used here.
     """
 
-    if not (
+    has_source_evidence = (
         _has_text(
             evidence.source_evidence_source
         )
         or _has_text(
             evidence.source_evidence_text
         )
-    ):
+    )
+
+    if not has_source_evidence:
         return None
 
     if _has_text(
         evidence.source_url
     ):
-        return (
-            evidence.source_url.strip()
-        )
+        return evidence.source_url.strip()
 
     if _has_text(
         evidence.source_name
     ):
-        return (
-            evidence.source_name.strip()
-        )
+        return evidence.source_name.strip()
 
     if _has_text(
         evidence.source_evidence_text
@@ -174,6 +192,10 @@ def _build_prompt(
     evidence: AttributionEvidence,
     intended_use: str,
 ) -> str:
+    """
+    Build the copyright and licence assessment prompt.
+    """
+
     source_reference = (
         _explicit_source_reference(
             evidence
@@ -182,20 +204,23 @@ def _build_prompt(
 
     return f"""
 You are independently assessing copyright and licence information
-for one image in a student webpage.
+for one image used in a student's webpage.
 
 Use ONLY the supplied webpage evidence.
 
-Do not invent facts.
+Do not invent information.
 
-Assess exactly THREE criteria:
+Do not use information that was not extracted from the student's
+webpage.
+
+You must assess exactly THREE criteria:
 
 1. {CRITERION_OWNER}
 2. {CRITERION_LICENCE}
 3. {CRITERION_TERMS}
 
 ============================================================
-IMPORTANT: TECHNICAL IMAGE URL
+TECHNICAL IMAGE URL
 ============================================================
 
 Technical image URL:
@@ -204,31 +229,40 @@ Technical image URL:
 
 This URL identifies which image is being assessed.
 
-It is NOT automatically copyright attribution.
+IMPORTANT:
 
-It is NOT automatically a student-supplied source/reference.
+The technical image URL is NOT automatically copyright attribution.
 
-It is NOT automatically a licence.
+The technical image URL is NOT automatically a student-supplied
+source/reference.
 
-It is NOT automatically a licence-terms URL.
+The technical image URL is NOT automatically a licence.
 
-A relative path such as:
+The technical image URL is NOT automatically a licence-terms URL.
 
-<img src="photo.jpg">
+For example:
 
-may be converted by the crawler into a full URL.
+    <img src="photo.jpg">
 
-That conversion must NEVER make the copyright criterion pass.
+may be resolved by the crawler to:
 
-Similarly, an externally hosted image URL alone must not be treated
-as attribution merely because it contains a recognisable website name.
+    https://example.com/student/photo.jpg
 
-Only explicit attribution evidence extracted from the student's
-caption, nearby attribution text, hyperlink, or similar information
-may count as a source/reference.
+The resolved URL merely identifies where the browser loaded the
+image.
+
+It must not automatically satisfy any copyright requirement.
+
+Similarly, an externally hosted image URL must not automatically
+be treated as copyright attribution merely because the URL contains
+a recognisable domain such as Flickr, Wikimedia, Pexels, Unsplash,
+or Pixabay.
+
+Only explicit evidence extracted from the student's webpage may
+be used as attribution evidence.
 
 ============================================================
-SUPPLIED EVIDENCE
+SUPPLIED WEBPAGE EVIDENCE
 ============================================================
 
 Alt text:
@@ -243,7 +277,7 @@ Figure caption:
 Nearby text:
 {_display(evidence.nearby_text)}
 
-Detected creator/copyright holder:
+Detected creator or copyright holder:
 {_display(evidence.possible_author)}
 
 Copyright evidence source:
@@ -267,7 +301,7 @@ Source evidence source:
 Source evidence text:
 {_display(evidence.source_evidence_text)}
 
-Detected licence/permission:
+Detected licence or permission:
 {_display(evidence.licence_name)}
 
 Licence evidence source:
@@ -276,7 +310,7 @@ Licence evidence source:
 Licence evidence text:
 {_display(evidence.licence_evidence_text)}
 
-Licence terms URL:
+Detected licence terms URL:
 {_display(evidence.licence_url)}
 
 Declared intended use:
@@ -287,97 +321,189 @@ CRITERION 1
 COPYRIGHT OWNER IDENTIFIED
 ============================================================
 
-PASS when:
+Criterion name exactly:
 
-- a creator or copyright holder is explicitly identified; or
-- the image is explicitly self-authored; or
-- no named creator is supplied but EXPLICIT source attribution was
-  provided by the student.
+{CRITERION_OWNER}
 
-For this coursework assessment, explicitly supplied source attribution
-may be accepted as the student's copyright reference.
+PASS when at least one of the following applies:
 
-Do not claim that a source website legally owns copyright unless the
-student explicitly states this.
+1. A creator, photographer, author, copyright holder, or copyright
+   owner is explicitly identified.
+
+2. The image is explicitly identified as self-authored.
+
+3. No separately named creator or copyright holder is supplied,
+   but the student explicitly provides a source/reference associated
+   with the image.
+
+For this coursework assessment, an explicitly supplied source or
+reference may be accepted as the student's copyright reference.
+
+This does NOT mean that the source website is necessarily the legal
+copyright owner.
+
+Do not state that Flickr, Wikimedia, Pexels, Unsplash, Pixabay,
+or another website legally owns copyright unless the supplied
+evidence explicitly states that.
+
+FAIL when:
+
+- no creator or copyright holder is identified;
+- no self-authorship claim is supplied; and
+- no explicit source/reference attribution was extracted.
 
 CRITICAL:
 
-If:
-
-Copyright evidence = Not detected
-
-and:
-
-Source evidence = Not detected
-
-then this criterion must FAIL.
-
-The technical image URL must not cause a pass.
+The technical image URL alone must NEVER cause this criterion to pass.
 
 ============================================================
 CRITERION 2
 LICENCE OR PERMISSION IDENTIFIED
 ============================================================
 
-PASS when an explicit:
+Criterion name exactly:
 
-- licence;
-- permission statement;
-- self-authorship statement;
-- public-domain basis;
-- or other clear permission basis
+{CRITERION_LICENCE}
 
-is supplied.
+PASS when the supplied webpage evidence explicitly identifies:
 
-A source/reference alone is NOT a licence.
+- a licence;
+- a permission statement;
+- a public-domain basis;
+- a self-authorship statement;
+- or another clear permission basis.
 
-The image host alone is NOT a licence.
+Examples include:
 
-You may interpret a licence even if the deterministic rule engine
-does not recognise it, provided the supplied webpage evidence is
-sufficient.
+- Creative Commons;
+- CC BY;
+- CC BY-SA;
+- CC BY-NC;
+- CC0;
+- Pexels License;
+- Unsplash License;
+- Pixabay Content License;
+- public domain;
+- explicit permission;
+- self-authorship.
+
+IMPORTANT:
+
+If the supplied evidence explicitly says:
+
+    Licensed under Creative Commons
+
+then this criterion PASSES.
+
+The fact that a specific Creative Commons variant was not supplied
+does not mean that no licence was identified.
+
+It may affect whether the terms are sufficiently located or whether
+manual review is appropriate, but the licence/permission criterion
+itself passes because Creative Commons was explicitly stated.
+
+A source/reference by itself is NOT a licence.
+
+A source website by itself is NOT permission.
+
+An image host by itself is NOT permission.
 
 ============================================================
 CRITERION 3
 LICENCE TERMS LOCATION PROVIDED
 ============================================================
 
+Criterion name exactly:
+
+{CRITERION_TERMS}
+
 For a self-authored image:
 
 PASS.
 
-An external licence-terms URL is not required.
+A separate external licence-terms URL is not required when the
+student explicitly declares the image to be self-authored.
 
 For an externally sourced image:
 
-PASS only when a URL or hyperlink associated with the applicable
-licence/permission terms is supplied.
+PASS only when the supplied webpage contains a URL or hyperlink
+associated with the applicable licence or permission terms.
 
-Do not treat:
+Examples include:
 
-- image src;
-- raw image URL;
-- photographer profile;
-- source homepage;
-- ordinary source reference
+- a Creative Commons licence URL;
+- the Pexels License page;
+- the Unsplash License page;
+- the Pixabay licence page;
+- another page explicitly identified as containing the applicable
+  licence or permission terms.
 
-as the licence-terms location unless the webpage explicitly associates
-it with the licence terms.
+Do NOT automatically accept:
+
+- the technical image URL;
+- the raw image src;
+- a photographer profile;
+- an image page;
+- a Flickr image page;
+- a Wikimedia image page;
+- a source homepage;
+- an ordinary source/reference URL.
+
+Those URLs identify the source or image unless the webpage explicitly
+associates them with the applicable licence terms.
+
+============================================================
+EXAMPLE
+============================================================
+
+Suppose the evidence contains:
+
+Creator:
+Maggio7 on Flickr
+
+Caption:
+Image by Maggio7 on Flickr. Licensed under Creative Commons.
+
+Licence:
+Creative Commons
+
+Licence terms URL:
+Not detected
+
+The correct assessment is:
+
+Copyright owner identified:
+PASS
+
+Licence or permission identified:
+PASS
+
+Licence terms location provided:
+FAIL
+
+The licence criterion passes because the student explicitly stated
+that the image is licensed under Creative Commons.
+
+The licence-terms criterion fails because no hyperlink to the
+applicable Creative Commons licence terms was supplied.
 
 ============================================================
 RATIONALE QUALITY
 ============================================================
 
-For every criterion provide approximately 2 to 4 useful sentences.
+Every criterion must contain a useful evidence-based rationale.
+
+Each rationale should normally contain approximately 2 to 4
+sentences.
 
 Explain:
 
-- what evidence was found;
-- where it was found;
-- what the relevant evidence says;
-- why it causes Pass or Fail.
+1. What evidence was found.
+2. Where the evidence was found.
+3. What the evidence says.
+4. Why the evidence causes the criterion to pass or fail.
 
-Do not return vague responses such as:
+Do not return vague rationales such as:
 
 "Creator found."
 
@@ -391,37 +517,51 @@ Do not return vague responses such as:
 MANUAL REVIEW
 ============================================================
 
-Manual review is required when:
+Manual review should be required only when genuinely necessary.
 
-- self-authorship cannot be independently verified;
-- the supplied licence is ambiguous;
-- the supplied licence cannot be interpreted reliably;
-- evidence is contradictory;
-- human verification is genuinely necessary.
+Examples:
 
-Do NOT recommend manual review merely because information is missing.
+- a self-authorship claim cannot be independently verified;
+- contradictory evidence exists;
+- a supplied licence is too ambiguous to interpret reliably;
+- human verification is required.
+
+Do NOT require manual review merely because a criterion fails.
+
+Missing information can simply result in a failed criterion.
 
 ============================================================
 OVERALL CLASSIFICATION
 ============================================================
 
-3 passes:
+Exactly 3 passes:
+
 Fully Compliant
 
-1 or 2 passes:
+Exactly 1 or 2 passes:
+
 Partially Compliant
 
-0 passes:
+Exactly 0 passes:
+
 Non-Compliant
 
 Return exactly the three required criteria.
 
-Return JSON only and match the supplied schema.
+Use these exact criterion names:
+
+{CRITERION_OWNER}
+{CRITERION_LICENCE}
+{CRITERION_TERMS}
+
+Return JSON only.
+
+The JSON must match the supplied schema.
 """.strip()
 
 
 # ============================================================
-# NORMALISATION
+# CRITERION MAP
 # ============================================================
 
 
@@ -431,6 +571,10 @@ def _criterion_map(
     str,
     LlmCriterionAssessment,
 ]:
+    """
+    Index criteria by their exact criterion names.
+    """
+
     return {
         criterion.criterion: criterion
         for criterion
@@ -438,9 +582,21 @@ def _criterion_map(
     }
 
 
+# ============================================================
+# NORMALISE CRITERIA
+# ============================================================
+
+
 def _normalise_criteria(
     assessment: LlmImageAssessment,
 ) -> LlmImageAssessment:
+    """
+    Guarantee exactly the three required criteria.
+
+    If Ollama omits a criterion, create it so the consistency
+    layer can evaluate it from the extracted evidence.
+    """
+
     existing = (
         _criterion_map(
             assessment
@@ -451,20 +607,23 @@ def _normalise_criteria(
         LlmCriterionAssessment
     ] = []
 
-    for name in REQUIRED_CRITERIA:
+    for criterion_name in REQUIRED_CRITERIA:
         criterion = existing.get(
-            name
+            criterion_name
         )
 
         if criterion is None:
             criterion = (
                 LlmCriterionAssessment(
-                    criterion=name,
+                    criterion=criterion_name,
                     passed=False,
                     rationale=(
                         "The AI response did not contain a "
                         "valid assessment for this required "
-                        "criterion."
+                        "criterion. The extracted webpage "
+                        "evidence will therefore be used to "
+                        "apply the assessment consistency "
+                        "rules."
                     ),
                 )
             )
@@ -481,7 +640,7 @@ def _normalise_criteria(
 
 
 # ============================================================
-# COPYRIGHT CONSISTENCY
+# COPYRIGHT OWNER CONSISTENCY
 # ============================================================
 
 
@@ -491,9 +650,14 @@ def _owner_consistency(
     bool,
     str,
 ]:
-    # ---------------------------------------------------------
-    # Named creator
-    # ---------------------------------------------------------
+    """
+    Determine the copyright-owner criterion directly from
+    the extracted evidence.
+    """
+
+    # --------------------------------------------------------
+    # Named creator / copyright holder
+    # --------------------------------------------------------
 
     if _has_text(
         evidence.possible_author
@@ -532,9 +696,10 @@ def _owner_consistency(
         rationale = _append_sentence(
             rationale,
             (
-                "Because this evidence explicitly identifies "
-                "the creator or copyright holder associated "
-                "with the image, this criterion passes."
+                "Because the supplied webpage evidence "
+                "explicitly identifies the creator or "
+                "copyright holder associated with the image, "
+                "this criterion passes."
             ),
         )
 
@@ -543,9 +708,59 @@ def _owner_consistency(
             rationale,
         )
 
-    # ---------------------------------------------------------
-    # Explicit source attribution
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # Self-authorship
+    # --------------------------------------------------------
+
+    if _is_self_authored(
+        evidence
+    ):
+        rationale = (
+            "The supplied webpage evidence explicitly "
+            "identifies the image as self-authored."
+        )
+
+        if _has_text(
+            evidence.licence_evidence_source
+        ):
+            rationale = _append_sentence(
+                rationale,
+                (
+                    "The self-authorship information was "
+                    "found in the "
+                    f"{evidence.licence_evidence_source.strip()}."
+                ),
+            )
+
+        if _has_text(
+            evidence.licence_evidence_text
+        ):
+            rationale = _append_sentence(
+                rationale,
+                (
+                    "Relevant evidence: "
+                    f"'{evidence.licence_evidence_text.strip()}'."
+                ),
+            )
+
+        rationale = _append_sentence(
+            rationale,
+            (
+                "The explicit self-authorship claim is "
+                "accepted as identifying the student as the "
+                "creator for this automated coursework "
+                "assessment, so this criterion passes."
+            ),
+        )
+
+        return (
+            True,
+            rationale,
+        )
+
+    # --------------------------------------------------------
+    # Explicit source/reference
+    # --------------------------------------------------------
 
     source_reference = (
         _explicit_source_reference(
@@ -588,9 +803,10 @@ def _owner_consistency(
         rationale = _append_sentence(
             rationale,
             (
-                "The criterion passes because explicit source "
-                "attribution was supplied; the technical image "
-                "URL alone would not be sufficient."
+                "This acceptance is specific to the "
+                "coursework assessment and does not assert "
+                "that the referenced website is legally the "
+                "copyright owner."
             ),
         )
 
@@ -599,78 +815,72 @@ def _owner_consistency(
             rationale,
         )
 
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
     # Nothing supplied
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
 
-    return (
-        False,
+    rationale = (
+        "No image creator or copyright holder was identified "
+        "in the supplied webpage evidence, and no explicit "
+        "source attribution or self-authorship claim was "
+        "detected."
+    )
+
+    if _has_text(
+        evidence.image.src
+    ):
+        rationale = _append_sentence(
+            rationale,
+            (
+                "The technical image URL only identifies "
+                "where the image file is loaded from and is "
+                "not treated as copyright attribution."
+            ),
+        )
+
+    rationale = _append_sentence(
+        rationale,
         (
-            "No image creator or copyright holder was identified "
-            "in the supplied webpage evidence, and no explicit "
-            "source attribution was detected. The technical "
-            "image URL only identifies where the image file is "
-            "loaded from and is not treated as copyright "
-            "attribution. Therefore this criterion fails."
+            "Therefore this criterion fails."
         ),
     )
 
+    return (
+        False,
+        rationale,
+    )
+
 
 # ============================================================
-# APPLY CONSISTENCY RULES
+# LICENCE CONSISTENCY
 # ============================================================
 
 
-def _apply_consistency_rules(
-    assessment: LlmImageAssessment,
+def _licence_consistency(
     evidence: AttributionEvidence,
-) -> LlmImageAssessment:
-    criteria = (
-        _criterion_map(
-            assessment
-        )
-    )
+) -> tuple[
+    bool,
+    str,
+]:
+    """
+    Determine whether a licence or permission basis exists.
 
-    owner = criteria[
-        CRITERION_OWNER
-    ]
+    Explicitly detected licence evidence passes this criterion
+    even when Ollama omitted the criterion or returned False.
+    """
 
-    licence = criteria[
-        CRITERION_LICENCE
-    ]
-
-    terms = criteria[
-        CRITERION_TERMS
-    ]
-
-    self_authored = (
-        _is_self_authored(
-            evidence
-        )
-    )
-
-    # ---------------------------------------------------------
-    # Owner
-    # ---------------------------------------------------------
-
-    (
-        owner.passed,
-        owner.rationale,
-    ) = _owner_consistency(
-        evidence
-    )
-
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
     # Self-authored
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
 
-    if self_authored:
-        licence.passed = True
-
+    if _is_self_authored(
+        evidence
+    ):
         rationale = (
-            "The image is explicitly declared as self-authored. "
-            "The self-authorship claim is accepted as the "
-            "permission basis for automated coursework assessment."
+            "The image is explicitly declared as "
+            "self-authored. The self-authorship claim is "
+            "accepted as the permission basis for automated "
+            "coursework assessment."
         )
 
         if _has_text(
@@ -695,69 +905,18 @@ def _apply_consistency_rules(
                 ),
             )
 
-        licence.rationale = (
-            rationale
+        return (
+            True,
+            rationale,
         )
 
-        terms.passed = True
+    # --------------------------------------------------------
+    # Explicit licence / permission
+    # --------------------------------------------------------
 
-        terms.rationale = (
-            "The image is explicitly declared as self-authored. "
-            "A separate external licence-terms URL is therefore "
-            "not required for this coursework assessment."
-        )
-
-        assessment.manual_review_required = (
-            True
-        )
-
-        assessment.manual_review_reason = (
-            SELF_AUTHORSHIP_REVIEW_REASON
-        )
-
-        return assessment
-
-    # ---------------------------------------------------------
-    # External image with no licence
-    # ---------------------------------------------------------
-
-    if not _has_text(
+    if _has_text(
         evidence.licence_name
     ):
-        licence.passed = False
-
-        source_reference = (
-            _explicit_source_reference(
-                evidence
-            )
-        )
-
-        if source_reference:
-            licence.rationale = (
-                "No licence name, licensing statement, "
-                "permission statement, or self-authorship claim "
-                "was identified. The student supplied "
-                f"'{source_reference}' as explicit source "
-                "attribution, which identifies where the image "
-                "was obtained but does not itself establish "
-                "permission to use it. Therefore this criterion "
-                "fails."
-            )
-
-        else:
-            licence.rationale = (
-                "No licence name, licensing statement, "
-                "permission statement, or self-authorship claim "
-                "was identified in the supplied webpage evidence. "
-                "Therefore no permission basis has been established "
-                "and this criterion fails."
-            )
-
-    # ---------------------------------------------------------
-    # External image with supplied licence
-    # ---------------------------------------------------------
-
-    elif licence.passed:
         licence_name = (
             evidence.licence_name.strip()
         )
@@ -793,80 +952,312 @@ def _apply_consistency_rules(
         rationale = _append_sentence(
             rationale,
             (
-                "The AI considers the supplied evidence "
-                "sufficient to establish the licence or "
-                "permission basis, so this criterion passes."
+                "Because the supplied webpage evidence "
+                "explicitly identifies a licence or permission "
+                "basis, this criterion passes."
             ),
         )
 
-        licence.rationale = (
-            rationale
+        return (
+            True,
+            rationale,
         )
 
-    # ---------------------------------------------------------
-    # Licence terms
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # No licence
+    # --------------------------------------------------------
 
-    if not _has_text(
+    source_reference = (
+        _explicit_source_reference(
+            evidence
+        )
+    )
+
+    if source_reference:
+        rationale = (
+            "No licence name, licensing statement, permission "
+            "statement, public-domain basis, or self-authorship "
+            "claim was identified in the supplied webpage "
+            "evidence. The student supplied "
+            f"'{source_reference}' as explicit source "
+            "attribution, which identifies where the image "
+            "came from but does not itself establish permission "
+            "to use the image. Therefore this criterion fails."
+        )
+
+        return (
+            False,
+            rationale,
+        )
+
+    return (
+        False,
+        (
+            "No licence name, licensing statement, permission "
+            "statement, public-domain basis, or self-authorship "
+            "claim was identified in the supplied webpage "
+            "evidence. No permission basis has therefore been "
+            "established, so this criterion fails."
+        ),
+    )
+
+
+# ============================================================
+# LICENCE TERMS CONSISTENCY
+# ============================================================
+
+
+def _terms_consistency(
+    evidence: AttributionEvidence,
+) -> tuple[
+    bool,
+    str,
+]:
+    """
+    Determine whether the applicable licence terms location
+    has been supplied.
+    """
+
+    # --------------------------------------------------------
+    # Self-authored
+    # --------------------------------------------------------
+
+    if _is_self_authored(
+        evidence
+    ):
+        return (
+            True,
+            (
+                "The image is explicitly declared as "
+                "self-authored. A separate external "
+                "licence-terms URL is therefore not required "
+                "for this coursework assessment. The "
+                "criterion passes on the basis of the "
+                "self-authorship claim."
+            ),
+        )
+
+    # --------------------------------------------------------
+    # External licence URL
+    # --------------------------------------------------------
+
+    if _has_text(
         evidence.licence_url
     ):
-        terms.passed = False
-
-        source_reference = (
-            _explicit_source_reference(
-                evidence
-            )
+        licence_url = (
+            evidence.licence_url.strip()
         )
 
-        if source_reference:
-            terms.rationale = (
-                "No URL or hyperlink explicitly associated with "
-                "the applicable licence terms was identified. "
-                f"The student supplied '{source_reference}' as "
-                "the image source/reference, but this identifies "
-                "where the image was obtained rather than where "
-                "the applicable licence terms can be found. "
+        rationale = (
+            "The webpage supplies a URL or hyperlink for the "
+            "applicable licence or permission terms: "
+            f"'{licence_url}'."
+        )
+
+        if _has_text(
+            evidence.licence_url_evidence_source
+        ):
+            rationale = _append_sentence(
+                rationale,
+                (
+                    "The licence-terms link was found in the "
+                    f"{evidence.licence_url_evidence_source.strip()}."
+                ),
+            )
+
+        if _has_text(
+            evidence.licence_url_evidence_text
+        ):
+            rationale = _append_sentence(
+                rationale,
+                (
+                    "Relevant link evidence: "
+                    f"'{evidence.licence_url_evidence_text.strip()}'."
+                ),
+            )
+
+        rationale = _append_sentence(
+            rationale,
+            (
+                "Because the supplied hyperlink identifies "
+                "where the applicable licence or permission "
+                "terms can be found, this criterion passes."
+            ),
+        )
+
+        return (
+            True,
+            rationale,
+        )
+
+    # --------------------------------------------------------
+    # No licence terms URL
+    # --------------------------------------------------------
+
+    source_reference = (
+        _explicit_source_reference(
+            evidence
+        )
+    )
+
+    if source_reference:
+        return (
+            False,
+            (
+                "No URL or hyperlink explicitly associated "
+                "with the applicable licence terms was "
+                "identified. The student supplied "
+                f"'{source_reference}' as the image "
+                "source/reference, but this identifies where "
+                "the image was obtained rather than where the "
+                "applicable licence terms can be found. "
                 "Therefore this criterion fails."
-            )
+            ),
+        )
 
-        else:
-            terms.rationale = (
-                "No URL or hyperlink identifying the location "
-                "of the applicable licence terms was supplied. "
-                "The technical image URL is not a licence-terms "
-                "URL, so this criterion fails."
-            )
+    return (
+        False,
+        (
+            "No URL or hyperlink identifying the location of "
+            "the applicable licence terms was supplied in the "
+            "webpage evidence. The technical image URL is not "
+            "treated as a licence-terms URL. Therefore this "
+            "criterion fails."
+        ),
+    )
 
-    else:
-        terms.passed = True
 
-        terms.rationale = (
-            "The webpage supplies a URL for the applicable "
-            "licence or permission terms: "
-            f"'{evidence.licence_url.strip()}'. Because this "
-            "hyperlink identifies the location of the applicable "
-            "licence terms, this criterion passes."
+# ============================================================
+# APPLY EVIDENCE CONSISTENCY RULES
+# ============================================================
+
+
+def _apply_consistency_rules(
+    assessment: LlmImageAssessment,
+    evidence: AttributionEvidence,
+) -> LlmImageAssessment:
+    """
+    Apply evidence consistency rules after the LLM response.
+
+    Explicit structured evidence extracted from the webpage
+    cannot be lost because Ollama omitted a criterion or
+    returned an inconsistent boolean.
+    """
+
+    criteria = (
+        _criterion_map(
+            assessment
+        )
+    )
+
+    owner = criteria[
+        CRITERION_OWNER
+    ]
+
+    licence = criteria[
+        CRITERION_LICENCE
+    ]
+
+    terms = criteria[
+        CRITERION_TERMS
+    ]
+
+    # --------------------------------------------------------
+    # Copyright owner
+    # --------------------------------------------------------
+
+    (
+        owner_passed,
+        owner_rationale,
+    ) = _owner_consistency(
+        evidence
+    )
+
+    owner.passed = (
+        owner_passed
+    )
+
+    owner.rationale = (
+        owner_rationale
+    )
+
+    # --------------------------------------------------------
+    # Licence / permission
+    # --------------------------------------------------------
+
+    (
+        licence_passed,
+        licence_rationale,
+    ) = _licence_consistency(
+        evidence
+    )
+
+    licence.passed = (
+        licence_passed
+    )
+
+    licence.rationale = (
+        licence_rationale
+    )
+
+    # --------------------------------------------------------
+    # Licence terms location
+    # --------------------------------------------------------
+
+    (
+        terms_passed,
+        terms_rationale,
+    ) = _terms_consistency(
+        evidence
+    )
+
+    terms.passed = (
+        terms_passed
+    )
+
+    terms.rationale = (
+        terms_rationale
+    )
+
+    # --------------------------------------------------------
+    # Self-authorship requires manual review
+    # --------------------------------------------------------
+
+    if _is_self_authored(
+        evidence
+    ):
+        assessment.manual_review_required = (
+            True
+        )
+
+        assessment.manual_review_reason = (
+            SELF_AUTHORSHIP_REVIEW_REASON
         )
 
     return assessment
 
 
 # ============================================================
-# CLASSIFICATION
+# FINAL CLASSIFICATION
 # ============================================================
 
 
 def _apply_classification(
     assessment: LlmImageAssessment,
 ) -> LlmImageAssessment:
-    passed = [
+    """
+    Calculate the final AI classification from the corrected
+    three criteria.
+    """
+
+    passed_criteria = [
         criterion
         for criterion
         in assessment.criteria
         if criterion.passed
     ]
 
-    failed = [
+    failed_criteria = [
         criterion
         for criterion
         in assessment.criteria
@@ -874,8 +1265,12 @@ def _apply_classification(
     ]
 
     passed_count = len(
-        passed
+        passed_criteria
     )
+
+    # --------------------------------------------------------
+    # Fully compliant
+    # --------------------------------------------------------
 
     if passed_count == 3:
         assessment.overall_label = (
@@ -883,41 +1278,68 @@ def _apply_classification(
         )
 
         assessment.explanation = (
-            "All three required copyright and licence criteria "
-            "pass. The supplied evidence provides an acceptable "
-            "copyright reference, a licence or permission basis, "
-            "and the required licence-terms location where "
-            "applicable."
+            "All three required copyright and licence "
+            "criteria pass. The supplied webpage evidence "
+            "provides an acceptable copyright reference, "
+            "a licence or permission basis, and the required "
+            "licence-terms location where applicable."
         )
 
-    elif passed_count > 0:
+        return assessment
+
+    # --------------------------------------------------------
+    # Partially compliant
+    # --------------------------------------------------------
+
+    if passed_count > 0:
         assessment.overall_label = (
             "Partially Compliant"
         )
 
-        missing = ", ".join(
+        failed_names = [
             criterion.criterion
             for criterion
-            in failed
-        )
+            in failed_criteria
+        ]
 
-        assessment.explanation = (
-            f"{passed_count} of the three required copyright "
-            "and licence criteria pass. The remaining failed "
-            f"requirement(s) are: {missing}."
-        )
+        if len(
+            failed_names
+        ) == 1:
+            assessment.explanation = (
+                f"{passed_count} of the three required "
+                "copyright and licence criteria pass. "
+                "The remaining failed requirement is "
+                f"'{failed_names[0]}'."
+            )
 
-    else:
-        assessment.overall_label = (
-            "Non-Compliant"
-        )
+        else:
+            failed_text = ", ".join(
+                failed_names
+            )
 
-        assessment.explanation = (
-            "None of the three required copyright and licence "
-            "criteria pass. The supplied webpage evidence does "
-            "not provide sufficient copyright attribution, "
-            "permission information, or licence-terms location."
-        )
+            assessment.explanation = (
+                f"{passed_count} of the three required "
+                "copyright and licence criteria pass. "
+                "The remaining failed requirements are: "
+                f"{failed_text}."
+            )
+
+        return assessment
+
+    # --------------------------------------------------------
+    # Non-compliant
+    # --------------------------------------------------------
+
+    assessment.overall_label = (
+        "Non-Compliant"
+    )
+
+    assessment.explanation = (
+        "None of the three required copyright and licence "
+        "criteria pass. The supplied webpage evidence does "
+        "not provide sufficient copyright attribution, "
+        "permission information, or licence-terms location."
+    )
 
     return assessment
 
@@ -931,6 +1353,12 @@ def _apply_manual_review(
     assessment: LlmImageAssessment,
     evidence: AttributionEvidence,
 ) -> LlmImageAssessment:
+    """
+    Keep manual-review behaviour consistent.
+
+    Failed criteria alone do not require manual review.
+    """
+
     if _is_self_authored(
         evidence
     ):
@@ -944,13 +1372,11 @@ def _apply_manual_review(
 
         return assessment
 
-    if not assessment.manual_review_required:
-        assessment.manual_review_reason = (
-            None
+    if (
+        assessment.manual_review_required
+        and not _has_text(
+            assessment.manual_review_reason
         )
-
-    elif not _has_text(
-        assessment.manual_review_reason
     ):
         assessment.manual_review_reason = (
             "The supplied copyright or licence information "
@@ -958,11 +1384,16 @@ def _apply_manual_review(
             "assessment and requires human review."
         )
 
+    if not assessment.manual_review_required:
+        assessment.manual_review_reason = (
+            None
+        )
+
     return assessment
 
 
 # ============================================================
-# MAIN
+# MAIN LLM ASSESSMENT
 # ============================================================
 
 
@@ -972,6 +1403,11 @@ def assess_image_with_llm(
     model: str = DEFAULT_MODEL,
     timeout_seconds: int = 600,
 ) -> LlmImageAssessment:
+    """
+    Send one image's extracted evidence to Ollama and return
+    the validated three-criterion AI assessment.
+    """
+
     schema = (
         LlmImageAssessment.model_json_schema()
     )
@@ -993,6 +1429,10 @@ def assess_image_with_llm(
         },
     }
 
+    # ========================================================
+    # CALL OLLAMA
+    # ========================================================
+
     try:
         response = requests.post(
             OLLAMA_GENERATE_URL,
@@ -1007,6 +1447,10 @@ def assess_image_with_llm(
             "Ollama request failed: "
             f"{error}"
         ) from error
+
+    # ========================================================
+    # READ OLLAMA RESPONSE
+    # ========================================================
 
     try:
         response_data = (
@@ -1033,9 +1477,17 @@ def assess_image_with_llm(
             "Ollama returned an invalid JSON response."
         ) from error
 
+    # ========================================================
+    # FORCE CORRECT IMAGE IDENTIFIER
+    # ========================================================
+
     generated_json[
         "image_src"
     ] = evidence.image.src
+
+    # ========================================================
+    # VALIDATE RESPONSE
+    # ========================================================
 
     try:
         assessment = (
@@ -1046,8 +1498,13 @@ def assess_image_with_llm(
 
     except ValidationError as error:
         raise LlmReasoningError(
-            "The LLM response did not match the required schema."
+            "The LLM response did not match the "
+            "required schema."
         ) from error
+
+    # ========================================================
+    # GUARANTEE EXACTLY THREE CRITERIA
+    # ========================================================
 
     assessment = (
         _normalise_criteria(
@@ -1055,12 +1512,20 @@ def assess_image_with_llm(
         )
     )
 
+    # ========================================================
+    # APPLY EXTRACTED EVIDENCE
+    # ========================================================
+
     assessment = (
         _apply_consistency_rules(
-            assessment,
-            evidence,
+            assessment=assessment,
+            evidence=evidence,
         )
     )
+
+    # ========================================================
+    # RECALCULATE CLASSIFICATION
+    # ========================================================
 
     assessment = (
         _apply_classification(
@@ -1068,10 +1533,14 @@ def assess_image_with_llm(
         )
     )
 
+    # ========================================================
+    # MANUAL REVIEW
+    # ========================================================
+
     assessment = (
         _apply_manual_review(
-            assessment,
-            evidence,
+            assessment=assessment,
+            evidence=evidence,
         )
     )
 

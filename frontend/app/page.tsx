@@ -199,7 +199,7 @@ function exportReportAsPdf(
   );
 
   addLabelValue(
-    "Overall rule-based score",
+    "Overall score",
     `${report.overall_rule_score}%`,
   );
 
@@ -219,9 +219,6 @@ function exportReportAsPdf(
       imageResult,
       index,
     ) => {
-      const evidence =
-        imageResult.evidence;
-
       const ruleResult =
         imageResult.rule_based_result;
 
@@ -239,82 +236,6 @@ function exportReportAsPdf(
       addLabelValue(
         "Image source",
         imageResult.image_src,
-      );
-
-
-      /*
-       * Evidence
-       */
-
-      addHeading(
-        "Evidence Used for Assessment",
-        13,
-      );
-
-      addHeading(
-        "Copyright evidence",
-        11,
-      );
-
-      addLabelValue(
-        "Found in",
-        displayValue(
-          evidence.author_evidence_source,
-        ),
-      );
-
-      addLabelValue(
-        "Evidence",
-        displayValue(
-          evidence.author_evidence_text,
-        ),
-      );
-
-
-      addHeading(
-        "Source evidence",
-        11,
-      );
-
-      addLabelValue(
-        "Found in",
-        displayValue(
-          evidence.source_evidence_source,
-        ),
-      );
-
-      addLabelValue(
-        "Evidence",
-        displayValue(
-          evidence.source_evidence_text,
-        ),
-      );
-
-
-      addHeading(
-        "Licence evidence",
-        11,
-      );
-
-      addLabelValue(
-        "Found in",
-        displayValue(
-          evidence.licence_evidence_source,
-        ),
-      );
-
-      addLabelValue(
-        "Evidence",
-        displayValue(
-          evidence.licence_evidence_text,
-        ),
-      );
-
-      addLabelValue(
-        "Licence terms URL",
-        displayValue(
-          evidence.licence_url,
-        ),
       );
 
 
@@ -599,7 +520,7 @@ export default function Home() {
               <div className="mt-6 grid gap-4 sm:grid-cols-3">
                 <article className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
                   <p className="text-sm text-slate-500">
-                    Rule score
+                    Overall score
                   </p>
 
                   <p className="mt-1 text-2xl font-bold">
@@ -645,9 +566,6 @@ export default function Home() {
                   imageResult,
                   imageIndex,
                 ) => {
-                  const evidence =
-                    imageResult.evidence;
-
                   const ruleResult =
                     imageResult.rule_based_result;
 
@@ -705,142 +623,6 @@ export default function Home() {
                             }
                             %
                           </p>
-
-
-                          {/*
-                            Evidence is intentionally
-                            displayed inside the
-                            assessment rather than in a
-                            separate "Information found"
-                            section.
-                          */}
-
-                          <div className="mt-5">
-                            <h5 className="text-base font-bold text-slate-900">
-                              Evidence used for
-                              assessment
-                            </h5>
-
-                            <p className="mt-1 text-sm leading-6 text-slate-600">
-                              The following evidence
-                              was extracted from the
-                              webpage for this image.
-                            </p>
-                          </div>
-
-
-                          <div className="mt-4 grid gap-4">
-
-                            {/* Copyright evidence */}
-
-                            <div className="min-w-0 overflow-hidden rounded-lg bg-white p-4 ring-1 ring-slate-200">
-                              <h5 className="font-semibold">
-                                Copyright
-                                evidence
-                              </h5>
-
-                              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Found in
-                              </p>
-
-                              <p className="mt-1 text-sm leading-6 text-slate-800">
-                                {displayValue(
-                                  evidence.author_evidence_source,
-                                )}
-                              </p>
-
-                              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Evidence
-                              </p>
-
-                              <p className="mt-1 break-words text-sm leading-6 text-slate-800">
-                                {displayValue(
-                                  evidence.author_evidence_text,
-                                )}
-                              </p>
-                            </div>
-
-
-                            {/* Source evidence */}
-
-                            <div className="min-w-0 overflow-hidden rounded-lg bg-white p-4 ring-1 ring-slate-200">
-                              <h5 className="font-semibold">
-                                Source evidence
-                              </h5>
-
-                              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Found in
-                              </p>
-
-                              <p className="mt-1 text-sm leading-6 text-slate-800">
-                                {displayValue(
-                                  evidence.source_evidence_source,
-                                )}
-                              </p>
-
-                              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Evidence
-                              </p>
-
-                              <p className="mt-1 break-all text-sm leading-6 text-slate-800">
-                                {displayValue(
-                                  evidence.source_evidence_text,
-                                )}
-                              </p>
-                            </div>
-
-
-                            {/* Licence evidence */}
-
-                            <div className="min-w-0 overflow-hidden rounded-lg bg-white p-4 ring-1 ring-slate-200">
-                              <h5 className="font-semibold">
-                                Licence evidence
-                              </h5>
-
-                              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Found in
-                              </p>
-
-                              <p className="mt-1 text-sm leading-6 text-slate-800">
-                                {displayValue(
-                                  evidence.licence_evidence_source,
-                                )}
-                              </p>
-
-                              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Evidence
-                              </p>
-
-                              <p className="mt-1 break-words text-sm leading-6 text-slate-800">
-                                {displayValue(
-                                  evidence.licence_evidence_text,
-                                )}
-                              </p>
-
-                              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Licence terms URL
-                              </p>
-
-                              <div className="mt-1 break-all text-sm leading-6 text-slate-800">
-                                {evidence.licence_url ? (
-                                  <a
-                                    href={
-                                      evidence.licence_url
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900"
-                                  >
-                                    {
-                                      evidence.licence_url
-                                    }
-                                  </a>
-                                ) : (
-                                  "Not detected"
-                                )}
-                              </div>
-                            </div>
-                          </div>
 
 
                           {/* Criteria */}
